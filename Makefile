@@ -1,9 +1,9 @@
-CC = gcc -Wall -O2
-
+CC = gcc -Wall -O3 -funroll-loops -fomit-frame-pointer `./gcccpuopt`
+CC = gcc -g
 all:
-	$(CC) fluid.c -o fluid -lGL -lGLU `sdl-config --cflags --libs`
+	$(CC) liquid.c -o liquid -lGL -lGLU `sdl-config --cflags --libs`
 
 clean:
 	@echo Cleaning up...
-	@rm fluid
+	@rm liquid
 	@echo Done.

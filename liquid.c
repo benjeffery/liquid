@@ -1,15 +1,15 @@
 /*
- * This code was created by Jeff Molofee '99 
+ * This code was created by Jeff Molofee '99
  * (ported to Linux/SDL by Ti Leggett '01)
  *
  * If you've found this code useful, please let me know.
  *
  * Visit Jeff at http://nehe.gamedev.net/
- * 
- * or for port-specific comments, questions, bugreports etc. 
+ *
+ * or for port-specific comments, questions, bugreports etc.
  * email to leggett@eecs.tulane.edu
  */
- 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <GL/gl.h>
@@ -18,11 +18,11 @@
 #include "SDL.h"
 
 /* screen width, height, and bit depth */
-#define SCREEN_WIDTH  400
-#define SCREEN_HEIGHT 400
+#define SCREEN_WIDTH  1000
+#define SCREEN_HEIGHT 1000
 #define SCREEN_BPP     16
-#define HEIGHT 50
-#define WIDTH 50
+#define HEIGHT 300
+#define WIDTH 300
 #define X 0
 #define Y 1
 
@@ -46,62 +46,62 @@ GLuint velocity_tex;
 GLuint pressure_tex;
 
 typedef float Value;
-typedef Value Pair[2];
 typedef Value ValueArray[WIDTH][HEIGHT];
 typedef Value ValueCol[HEIGHT];
-typedef Pair PairArray[WIDTH][HEIGHT];
-typedef Pair PairCol[HEIGHT];
-ValueArray material_array;
-ValueArray* material;
-ValueArray pressure_array;
-ValueArray* pressure;
-ValueArray tempval_array;
-ValueArray* tempval;
-ValueArray tempval2_array;
-ValueArray* tempval2;
-PairArray velocity_array;
-PairArray* velocity;
-PairArray temppair_array;
-PairArray* temppair;
+ValueArray gu_;
+ValueArray* gu;
+ValueArray gv_;
+ValueArray* gv;
+ValueArray gu_old_;
+ValueArray* gu_old;
+ValueArray gv_old_;
+ValueArray* gv_old;
+ValueArray gmaterial_;
+ValueArray* gmaterial;
+ValueArray gmaterial_old_;
+ValueArray* gmaterial_old;
 
 int vel_on;
 
 void InitFluid()
 {
   vel_on=FALSE;
-  material = &material_array;
-  pressure = &pressure_array;
-  tempval = &tempval_array; 
-  tempval2 = &tempval2_array;
-  velocity = &velocity_array;
-  temppair = &temppair_array;
-  
+  gu = &gu_;
+  gv = &gv_;
+  gu_old = &gu_old_;
+  gv_old = &gv_old_;
+  gmaterial = &gmaterial_;
+  gmaterial_old = &gmaterial_old_;
+
   int i,j,l;
   l = 0;
   for (i = 0; i < WIDTH; ++i) {
-    for (j = 0; j < HEIGHT; ++j) { 
-      material_array[i][j] = 0;
-      velocity_array[i][j][X] = 0;
-      velocity_array[i][j][Y] = 0;
+    for (j = 0; j < HEIGHT; ++j) {
+      gmaterial_[i][j] = 0;
+      gmaterial_old_[i][j] = 0;
+      gu_[i][j] = 0;
+      gv_[i][j] = 0;
+      gu_old_[i][j] = 0;
+      gv_old_[i][j] = 0;
     }
   }
   for (i = 1; i < WIDTH-1; ++i) {
-    for (j = 1; j < HEIGHT-1; ++j) { 
-      material_array[i][j] = l++%13 ? 0:1;
+    for (j = 1; j < HEIGHT-1; ++j) {
+      gmaterial_[i][j] = l++%13 ? 0:1;
     }
   }
-  velocity_array[WIDTH/4][HEIGHT/2][Y] = .01;
-  velocity_array[(WIDTH/4)*3][HEIGHT/2][Y] = .01;
-  velocity_array[WIDTH/2][HEIGHT/4][X] = .01;
-  velocity_array[WIDTH/2][(HEIGHT/4)*3][X] = .01;
+  gv_[WIDTH/4][HEIGHT/2] = .01;
+  gv_[(WIDTH/4)*3][HEIGHT/2] = .01;
+  gu_[WIDTH/2][HEIGHT/4] = .01;
+  gu_[WIDTH/2][(HEIGHT/4)*3] = .01;
 }
 
 float InterpolateScalar(ValueArray array, float x, float y)
 {
   if (x < 0) x = 0;
   if (y < 0) y = 0;
-  if (x > WIDTH) x = WIDTH;
-  if (y > HEIGHT) y = HEIGHT;
+  if (x > WIDTH-1) x = WIDTH-1;
+  if (y > HEIGHT-1) y = HEIGHT-1;
   unsigned f_x = x;
   unsigned f_y = y;
   float p_x = x-f_x;
@@ -109,143 +109,105 @@ float InterpolateScalar(ValueArray array, float x, float y)
   return (array[f_x][f_y]*(1.0-p_x)*(1.0-p_y)) + (array[f_x+1][f_y]*p_x*(1.0-p_y)) + (array[f_x][f_y+1]*(1.0-p_x)*p_y) + (array[f_x+1][f_y+1]*p_x*p_y);
 }
 
-PairArray* JacobiPoissonSolver2D(int iterations, float alpha, float r_beta, PairArray* v, PairArray* b, PairArray* temp)
+void JacobiPoissonSolver(int iterations, float alpha, float r_beta, ValueArray* k, ValueArray* b)
 {
-  /* Solve Av = b Where A = del^2 */
+  /* Solve Ak = b Where A = del^2 */
   unsigned iteration,x,y;
-  for (iteration = 0; iteration < iterations; iteration++) {
+  for (iteration = 0; iteration < iterations; ++iteration) {
     for (x = 1; x < WIDTH-1; ++x) {
-      for (y = 1; y < HEIGHT-1; ++y) { 
-	(*temp)[x][y][X] = ((*v)[x-1][y][X] + (*v)[x+1][y][X] + (*v)[x][y-1][X] + (*v)[x][y+1][X] + alpha * (*b)[x][y][X]) * r_beta;
-	(*temp)[x][y][Y] = ((*v)[x-1][y][Y] + (*v)[x+1][y][Y] + (*v)[x][y-1][Y] + (*v)[x][y+1][Y] + alpha * (*b)[x][y][Y]) * r_beta;
+      for (y = 1; y < HEIGHT-1; ++y) {
+           //printf("%d %d %d\n", iteration, x,y);
+           //printf("%d %d %d\n", iteration, x-1,y-1);
+          (*k)[x][y] = ((*k)[x-1][y] + (*k)[x+1][y]+ (*k)[x][y-1]+ (*k)[x][y+1] + alpha * (*b)[x][y]) * r_beta;
       }
     }
   }
-  if (b == v) {
-    PairArray* swap = v;
-    v = temp;
-    b = temp;
-    temp = swap;
-  }
-  else {
-    PairArray* swap = v;
-    v = temp;
-    temp = swap;
-  }
-  return v;
 }
 
-ValueArray* JacobiPoissonSolver(int iterations, float alpha, float r_beta, ValueArray* v, ValueArray* b, ValueArray* temp)
-{
-  /* Solve Av = b Where A = del^2 */
-  unsigned iteration,x,y;
-  for (iteration = 0; iteration < iterations; iteration++) {
-    for (x = 1; x < WIDTH-1; ++x) {
-      for (y = 1; y < HEIGHT-1; ++y) { 
-	(*temp)[x][y] = ((*v)[x-1][y] + (*v)[x+1][y]+ (*v)[x][y-1]+ (*v)[x][y+1] + alpha * (*b)[x][y]) * r_beta;
-      }
-    }
-  }
-  ValueArray* swap = v;
-  v = temp;
-  temp = swap;
-  return v;
-}
-
-void Advect()
+void Advect(ValueArray* dest, ValueArray* source, ValueArray* u, ValueArray* v, float dt)
 {
   unsigned x,y;
   for (x = 1; x < WIDTH-1; ++x) {
-    for (y = 1; y < HEIGHT-1; ++y) { 
-      float old_x = (float)x - (RDX * (*velocity)[x][y][X]);
-      float old_y = (float)y - (RDX * (*velocity)[x][y][Y]);
-      (*tempval)[x][y] = InterpolateScalar(*material, old_x, old_y);
+    for (y = 1; y < HEIGHT-1; ++y) {
+      float old_x = (float)x - (dt * RDX * (*u)[x][y]);
+      float old_y = (float)y - (dt * RDX * (*v)[x][y]);
+      (*dest)[x][y] = InterpolateScalar(*source, old_x, old_y);
     }
   }
-  ValueArray* swap = material;
-  material = tempval;
-  tempval = swap;
 }
 
-void Diffuse()
+void Diffuse(ValueArray* dest, ValueArray* source)
 {
-  PairArray * old_v = velocity;
-  velocity =  JacobiPoissonSolver2D(20, (DX*DX)/DT, 1.0/(4.0 + (DX*DX)/DT), velocity, velocity, temppair);
-  if (velocity != old_v)
-    temppair = old_v;
+  JacobiPoissonSolver(20, (DX*DX)/DT, 1.0/(4.0 + (DX*DX)/DT), dest, source);
 }
 
-void Divergence() 
+void Divergence(ValueArray* dest, ValueArray* u, ValueArray* v)
 {
   unsigned x,y;
   for (x = 1; x < WIDTH-1; ++x) {
-    for (y = 1; y < HEIGHT-1; ++y) { 
-      (*tempval)[x][y] = (0.5 + RDX) * (((*velocity)[x-1][y][X] - (*velocity)[x+1][y][X]) + ((*velocity)[x][y-1][Y] - (*velocity)[x][y+1][Y]));
+    for (y = 1; y < HEIGHT-1; ++y) {
+      (*dest)[x][y] = (0.5 + RDX) * (((*u)[x-1][y] - (*u)[x+1][y]) + ((*v)[x][y-1] - (*v)[x][y+1]));
     }
   }
 }
 
-void PressureSolve()
-{
-  ValueArray * old_p = pressure;
-  pressure = JacobiPoissonSolver(60, -(DX*DX), 1.0/4.0, pressure, tempval, tempval2);
-  if (pressure != old_p)
-    tempval2 = old_p;
-}
-
-void GradientSubtract()
+void GradientSubtract(ValueArray* u, ValueArray* v, ValueArray* pressure)
 {
   unsigned x,y;
   for (x = 1; x < WIDTH-1; ++x) {
-    for (y = 1; y < HEIGHT-1; ++y) { 
-      (*velocity)[x][y][X] -= 0.5 * RDX * ((*pressure)[x+1][y] - (*pressure)[x-1][y]);
-      (*velocity)[x][y][Y] -= 0.5 * RDX * ((*pressure)[x][y+1] - (*pressure)[x][y-1]);
+    for (y = 1; y < HEIGHT-1; ++y) {
+      (*u)[x][y] -= 0.5 * RDX * ((*pressure)[x+1][y] - (*pressure)[x-1][y]);
+      (*v)[x][y] -= 0.5 * RDX * ((*pressure)[x][y+1] - (*pressure)[x][y-1]);
     }
   }
 }
 
-void ApplyPressureBoundary()
+void Project(ValueArray* u, ValueArray* v, ValueArray* pressure, ValueArray* div)
+{
+    Divergence(div, u, v);
+    unsigned x,y;
+    for (x = 0; x < WIDTH; ++x) {
+        for (y = 0; y < HEIGHT; ++y) {
+            (*pressure)[x][y] = 0;
+        }
+    }
+    JacobiPoissonSolver(40, -(DX*DX), 1.0/4.0, pressure, div);
+    GradientSubtract(u, v, pressure);
+}
+
+void ApplyPressureBoundary(ValueArray* pressure)
 {
   unsigned x,y;
   for (x = 1; x < WIDTH-1; ++x) {
     (*pressure)[x][0] = (*pressure)[x][1];
     (*pressure)[x][HEIGHT-1] = (*pressure)[x][HEIGHT-2];
   }
-  for (y = 1; y < HEIGHT-1; ++y) { 
+  for (y = 1; y < HEIGHT-1; ++y) {
     (*pressure)[0][y] = (*pressure)[1][y];
     (*pressure)[WIDTH-1][y]= (*pressure)[WIDTH-2][y];
   }
 }
 
-void ApplyVelocityBoundary()
+void ApplyVelocityBoundary(ValueArray* u, ValueArray* v)
 {
   unsigned x,y;
   for (x = 1; x < WIDTH-1; ++x) {
-    (*velocity)[x][0][X] = -(*velocity)[x][1][X];
-    (*velocity)[x][0][Y] = -(*velocity)[x][1][Y];
-    (*velocity)[x][HEIGHT-1][X] = -(*velocity)[x][HEIGHT-2][X];
-    (*velocity)[x][HEIGHT-1][Y] = -(*velocity)[x][HEIGHT-2][Y];
+    (*u)[x][0] = -(*u)[x][1];
+    (*v)[x][0] = -(*v)[x][1];
+    (*u)[x][HEIGHT-1] = -(*u)[x][HEIGHT-2];
+    (*v)[x][HEIGHT-1] = -(*v)[x][HEIGHT-2];
   }
-  for (y = 1; y < HEIGHT-1; ++y) { 
-    (*velocity)[0][y][X] = -(*velocity)[1][y][X];
-    (*velocity)[0][y][X] = -(*velocity)[1][y][X];
-    (*velocity)[WIDTH-1][y][X] = -(*velocity)[WIDTH-2][y][X];
-    (*velocity)[WIDTH-1][y][Y] = -(*velocity)[WIDTH-2][y][Y];
-  }
-}
-void PrintPair(PairArray* array)
-{
-  unsigned x,y; 
-  for (x = 0; x < WIDTH; ++x) {
-    for (y = 0; y < HEIGHT; ++y) {
-      printf("%2.1f %2.1f  ", (*array)[x][y][X], (*array)[x][y][Y]);
-    }
-    printf("\n");
+  for (y = 1; y < HEIGHT-1; ++y) {
+    (*u)[0][y] = -(*u)[1][y];
+    (*v)[0][y] = -(*v)[1][y];
+    (*u)[WIDTH-1][y] = -(*u)[WIDTH-2][y];
+    (*v)[WIDTH-1][y] = -(*v)[WIDTH-2][y];
   }
 }
+
 void PrintValue(ValueArray* array)
 {
-  unsigned x,y; 
+  unsigned x,y;
   for (x = 0; x < WIDTH; ++x) {
     for (y = 0; y < HEIGHT; ++y) {
       printf("%2.1f %2.1f  ", (*array)[x][y], (*array)[x][y]);
@@ -253,7 +215,8 @@ void PrintValue(ValueArray* array)
     printf("\n");
   }
 }
-void PrintDebug()
+
+/*void PrintDebug()
 {
   printf("Velocity\n");
   PrintPair(velocity);
@@ -266,28 +229,43 @@ void PrintDebug()
   printf("TempVal\n");
   PrintValue(tempval);
   printf("\n");
+}*/
+
+inline void Swap(ValueArray* x, ValueArray* y)
+{
+    ValueArray* temp = x;
+    x=y;
+    y=temp;
 }
+
 void UpdateFluid()
 {
+  //VELO
   //  PrintDebug();
-  Advect();
-  Diffuse();
-  /*ApplyForce();*/
+  //Add mat and force;
+  Swap(gu, gu_old);
+  Swap(gv, gv_old);
+  Diffuse(gu, gu_old);
+  Diffuse(gv, gv_old);
+  Project(gu, gv, gu_old, gv_old);
+  Swap(gu, gu_old);
+  Swap(gv, gv_old);
+  Advect(gu, gu_old, gu_old, gv_old, DT);
+  Advect(gv, gv_old, gu_old, gv_old, DT);
+  Project(gu, gv, gu_old, gv_old);
+
+  //MAT
+  //add source
+  Swap(gmaterial, gmaterial_old);
+  Diffuse(gmaterial, gmaterial_old);
+  Swap(gmaterial, gmaterial_old);
+  Advect(gmaterial, gmaterial_old, gu, gv, DT);
+
   if (vel_on) {
-    (*velocity)[WIDTH/2][HEIGHT/2][Y] = 0.3;
-    (*velocity)[WIDTH/2][HEIGHT/2][X] = 0.3;
+    (*gu)[WIDTH/2][HEIGHT/2] = 0.3;
+    (*gv)[WIDTH/2][HEIGHT/2] = 0.3;
   }
-  Divergence();
-  unsigned x,y; 
-  for (x = 0; x < WIDTH; ++x) {
-    for (y = 0; y < HEIGHT; ++y) {
-      (*pressure)[x][y] = 0;
-    }
-  }
-  PressureSolve();
-  ApplyPressureBoundary();
-  GradientSubtract();
-  ApplyVelocityBoundary();
+
 
 }
 
@@ -308,73 +286,73 @@ int LoadGLTextures()
     GLubyte TextureImage[WIDTH][HEIGHT][4];
     int i,j;
     for (i = 0; i < WIDTH; ++i) {
-      for (j = 0; j < HEIGHT; ++j) { 
-        TextureImage[i][j][0] = (*material)[i][j] > 0 ? (*material)[i][j]*255 : 0;
-        TextureImage[i][j][1] = (*material)[i][j] > 0 ? (*material)[i][j]*255 : 0;
-        TextureImage[i][j][2] = (*material)[i][j] > 0 ? (*material)[i][j]*255 : 0;
+      for (j = 0; j < HEIGHT; ++j) {
+        TextureImage[i][j][0] = (*gmaterial)[i][j] > 0 ? (*gmaterial)[i][j]*255 : 0;
+        TextureImage[i][j][1] = (*gmaterial)[i][j] > 0 ? (*gmaterial)[i][j]*255 : 0;
+        TextureImage[i][j][2] = (*gmaterial)[i][j] > 0 ? (*gmaterial)[i][j]*255 : 0;
         TextureImage[i][j][3] = 127;
       }
     }
-   
+
     /* Create The Texture */
     glGenTextures( 1, &material_tex);
-    
+
     /* Typical Texture Generation Using Data From The Bitmap */
     glBindTexture( GL_TEXTURE_2D, material_tex);
-    
+
     /* Generate The Texture */
     glTexImage2D( GL_TEXTURE_2D, 0, 4, WIDTH,
                   HEIGHT, 0, GL_RGBA,
                   GL_UNSIGNED_BYTE, TextureImage );
-    
+
     /* Linear Filtering */
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 
     for (i = 0; i < WIDTH; ++i) {
-      for (j = 0; j < HEIGHT; ++j) { 
-        TextureImage[i][j][0] = ((*velocity)[i][j][X]-0.5)*255;
-        TextureImage[i][j][1] = ((*velocity)[i][j][Y]-0.5)*255;
+      for (j = 0; j < HEIGHT; ++j) {
+        TextureImage[i][j][0] = ((*gu)[i][j]-0.5)*255;
+        TextureImage[i][j][1] = ((*gv)[i][j]-0.5)*255;
         TextureImage[i][j][2] = 0;
         TextureImage[i][j][3] = 127;
       }
     }
-   
+
     /* Create The Texture */
     glGenTextures( 1, &velocity_tex);
-    
+
     /* Typical Texture Generation Using Data From The Bitmap */
     glBindTexture( GL_TEXTURE_2D, velocity_tex);
-    
+
     /* Generate The Texture */
     glTexImage2D( GL_TEXTURE_2D, 0, 4, WIDTH,
                   HEIGHT, 0, GL_RGBA,
                   GL_UNSIGNED_BYTE, TextureImage );
-    
+
     /* Linear Filtering */
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 
     for (i = 0; i < WIDTH; ++i) {
-      for (j = 0; j < HEIGHT; ++j) { 
+      for (j = 0; j < HEIGHT; ++j) {
         TextureImage[i][j][0] = 0;
-        TextureImage[i][j][1] = ((*pressure)[i][j]-0.5)*255;
+        TextureImage[i][j][1] = ((*gu_old)[i][j]-0.5)*255;
         TextureImage[i][j][2] = 0;
         TextureImage[i][j][3] = 127;
       }
     }
-   
+
     /* Create The Texture */
     glGenTextures( 1, &pressure_tex);
-    
+
     /* Typical Texture Generation Using Data From The Bitmap */
     glBindTexture( GL_TEXTURE_2D, pressure_tex);
-    
+
     /* Generate The Texture */
     glTexImage2D( GL_TEXTURE_2D, 0, 4, WIDTH,
                   HEIGHT, 0, GL_RGBA,
                   GL_UNSIGNED_BYTE, TextureImage );
-    
+
     /* Linear Filtering */
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
@@ -387,10 +365,10 @@ int resizeWindow( int width, int height )
 {
     /* Height / width ration */
     GLfloat ratio;
- 
+
     /* Protect against a divide by zero */
     if ( height == 0 )
-	height = 1;
+    height = 1;
 
     ratio = ( GLfloat )width / ( GLfloat )height;
 
@@ -522,14 +500,14 @@ int drawGLScene( GLvoid )
     /* Gather our frames per second */
     Frames++;
     {
-	GLint t = SDL_GetTicks();
-	if (t - T0 >= 5000) {
-	    GLfloat seconds = (t - T0) / 1000.0;
-	    GLfloat fps = Frames / seconds;
-	    printf("%d frames in %g seconds = %g FPS\n", Frames, seconds, fps);
-	    T0 = t;
-	    Frames = 0;
-	}
+    GLint t = SDL_GetTicks();
+    if (t - T0 >= 5000) {
+        GLfloat seconds = (t - T0) / 1000.0;
+        GLfloat fps = Frames / seconds;
+        printf("%d frames in %g seconds = %g FPS\n", Frames, seconds, fps);
+        T0 = t;
+        Frames = 0;
+    }
     }
 
     xrot += 0.00f; /* X Axis Rotation */
@@ -556,21 +534,21 @@ int main( int argc, char **argv )
 
     /* initialize SDL */
     if ( SDL_Init( SDL_INIT_VIDEO ) < 0 )
-	{
-	    fprintf( stderr, "Video initialization failed: %s\n",
-		     SDL_GetError( ) );
-	    Quit( 1 );
-	}
+    {
+        fprintf( stderr, "Video initialization failed: %s\n",
+             SDL_GetError( ) );
+        Quit( 1 );
+    }
 
     /* Fetch the video info */
     videoInfo = SDL_GetVideoInfo( );
 
     if ( !videoInfo )
-	{
-	    fprintf( stderr, "Video query failed: %s\n",
-		     SDL_GetError( ) );
-	    Quit( 1 );
-	}
+    {
+        fprintf( stderr, "Video query failed: %s\n",
+             SDL_GetError( ) );
+        Quit( 1 );
+    }
 
     /* the flags to pass to SDL_SetVideoMode */
     videoFlags  = SDL_OPENGL;          /* Enable OpenGL in SDL */
@@ -580,27 +558,27 @@ int main( int argc, char **argv )
 
     /* This checks to see if surfaces can be stored in memory */
     if ( videoInfo->hw_available )
-	videoFlags |= SDL_HWSURFACE;
+    videoFlags |= SDL_HWSURFACE;
     else
-	videoFlags |= SDL_SWSURFACE;
+    videoFlags |= SDL_SWSURFACE;
 
     /* This checks if hardware blits can be done */
     if ( videoInfo->blit_hw )
-	videoFlags |= SDL_HWACCEL;
+    videoFlags |= SDL_HWACCEL;
 
     /* Sets up OpenGL double buffering */
     SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1 );
 
     /* get a SDL surface */
     surface = SDL_SetVideoMode( SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BPP,
-				videoFlags );
+                videoFlags );
 
     /* Verify there is a surface */
     if ( !surface )
-	{
-	    fprintf( stderr,  "Video mode set failed: %s\n", SDL_GetError( ) );
-	    Quit( 1 );
-	}
+    {
+        fprintf( stderr,  "Video mode set failed: %s\n", SDL_GetError( ) );
+        Quit( 1 );
+    }
 
     /* initialize OpenGL */
     initGL( );
@@ -610,52 +588,52 @@ int main( int argc, char **argv )
 
     /* wait for events */
     while ( !done )
-	{
-	    /* handle the events in the queue */
+    {
+        /* handle the events in the queue */
 
-	    while ( SDL_PollEvent( &event ) )
-		{
-		    switch( event.type )
-			{
-			case SDL_ACTIVEEVENT:
-			    /* Something's happend with our focus
-			     * If we lost focus or we are iconified, we
-			     * shouldn't draw the screen
-			     */
-			    if ( event.active.gain == 0 )
-				isActive = FALSE;
-			    else
-				isActive = TRUE;
-			    break;			    
-			case SDL_VIDEORESIZE:
-			    /* handle resize event */
-			    surface = SDL_SetVideoMode( event.resize.w,
-							event.resize.h,
-							16, videoFlags );
-			    if ( !surface )
-				{
-				    fprintf( stderr, "Could not get a surface after resize: %s\n", SDL_GetError( ) );
-				    Quit( 1 );
-				}
-			    resizeWindow( event.resize.w, event.resize.h );
-			    break;
-			case SDL_KEYDOWN:
-			    /* handle key presses */
-			    handleKeyPress( &event.key.keysym );
-			    break;
-			case SDL_QUIT:
-			    /* handle quit requests */
-			    done = TRUE;
-			    break;
-			default:
-			    break;
-			}
-		}
+        while ( SDL_PollEvent( &event ) )
+        {
+            switch( event.type )
+            {
+            case SDL_ACTIVEEVENT:
+                /* Something's happend with our focus
+                 * If we lost focus or we are iconified, we
+                 * shouldn't draw the screen
+                 */
+                if ( event.active.gain == 0 )
+                isActive = FALSE;
+                else
+                isActive = TRUE;
+                break;
+            case SDL_VIDEORESIZE:
+                /* handle resize event */
+                surface = SDL_SetVideoMode( event.resize.w,
+                            event.resize.h,
+                            16, videoFlags );
+                if ( !surface )
+                {
+                    fprintf( stderr, "Could not get a surface after resize: %s\n", SDL_GetError( ) );
+                    Quit( 1 );
+                }
+                resizeWindow( event.resize.w, event.resize.h );
+                break;
+            case SDL_KEYDOWN:
+                /* handle key presses */
+                handleKeyPress( &event.key.keysym );
+                break;
+            case SDL_QUIT:
+                /* handle quit requests */
+                done = TRUE;
+                break;
+            default:
+                break;
+            }
+        }
 
-	    /* draw the scene */
-	    if ( isActive )
-		drawGLScene( );
-	}
+        /* draw the scene */
+        if ( isActive )
+        drawGLScene( );
+    }
 
     /* clean ourselves up and exit */
     Quit( 0 );
