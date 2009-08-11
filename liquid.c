@@ -1,15 +1,3 @@
-/*
- * This code was created by Jeff Molofee '99
- * (ported to Linux/SDL by Ti Leggett '01)
- *
- * If you've found this code useful, please let me know.
- *
- * Visit Jeff at http://nehe.gamedev.net/
- *
- * or for port-specific comments, questions, bugreports etc.
- * email to leggett@eecs.tulane.edu
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <GL/gl.h>
@@ -17,22 +5,27 @@
 #include <unistd.h>
 #include "SDL.h"
 
+#define swap(x,y) {ValueArray* temp = x; x=y; y=temp;}
+
 /* screen width, height, and bit depth */
-#define SCREEN_WIDTH  1000
-#define SCREEN_HEIGHT 1000
+#define SCREEN_WIDTH  500
+#define SCREEN_HEIGHT 500
 #define SCREEN_BPP     16
-#define HEIGHT 300
-#define WIDTH 300
+#define SIZE 200
 #define X 0
 #define Y 1
 
-#define DT 1.0
-#define DX 1.0
-#define RDX 1.0
+#define DT 0.1f
+#define DIFFUSION 0.0000001f
+#define VISCOSITY 0.0f 
 
 /* Set up some booleans */
 #define TRUE  1
 #define FALSE 0
+
+#define NEITHER 0
+#define TOPBOTTOM 1
+#define LEFTRIGHT 2
 
 /* This is our SDL surface */
 SDL_Surface *surface;
@@ -46,8 +39,8 @@ GLuint velocity_tex;
 GLuint pressure_tex;
 
 typedef float Value;
-typedef Value ValueArray[WIDTH][HEIGHT];
-typedef Value ValueCol[HEIGHT];
+typedef Value ValueArray[SIZE][SIZE];
+typedef Value ValueCol[SIZE];
 ValueArray gu_;
 ValueArray* gu;
 ValueArray gv_;
@@ -60,48 +53,99 @@ ValueArray gmaterial_;
 ValueArray* gmaterial;
 ValueArray gmaterial_old_;
 ValueArray* gmaterial_old;
+ValueArray bmaterial_;
+ValueArray* bmaterial;
+ValueArray bmaterial_old_;
+ValueArray* bmaterial_old;
+ValueArray rmaterial_;
+ValueArray* rmaterial;
+ValueArray rmaterial_old_;
+ValueArray* rmaterial_old;
 
 int vel_on;
-
+int show_vel;
+int mat_on;
+int reverse;
+int mat_dir;
 void InitFluid()
 {
   vel_on=FALSE;
+  mat_on=TRUE;
+  show_vel=FALSE;
+  reverse=FALSE;
+  mat_dir = 1;
+
   gu = &gu_;
   gv = &gv_;
   gu_old = &gu_old_;
   gv_old = &gv_old_;
   gmaterial = &gmaterial_;
   gmaterial_old = &gmaterial_old_;
+  rmaterial = &rmaterial_;
+  rmaterial_old = &rmaterial_old_;
+  bmaterial = &bmaterial_;
+  bmaterial_old = &bmaterial_old_;
 
   int i,j,l;
   l = 0;
-  for (i = 0; i < WIDTH; ++i) {
-    for (j = 0; j < HEIGHT; ++j) {
+  for (i = 0; i < SIZE; ++i) {
+    for (j = 0; j < SIZE; ++j) {
       gmaterial_[i][j] = 0;
       gmaterial_old_[i][j] = 0;
+      bmaterial_[i][j] = 0;
+      bmaterial_old_[i][j] = 0;
+      rmaterial_[i][j] = 0;
+      rmaterial_old_[i][j] = 0;
       gu_[i][j] = 0;
       gv_[i][j] = 0;
       gu_old_[i][j] = 0;
       gv_old_[i][j] = 0;
     }
   }
-  for (i = 1; i < WIDTH-1; ++i) {
-    for (j = 1; j < HEIGHT-1; ++j) {
-      gmaterial_[i][j] = l++%13 ? 0:1;
-    }
+}
+
+void ImputeCorners(ValueArray* v)
+{
+  (*v)[0][0] = 0.5f*((*v)[1][0]+(*v)[0][1]);
+  (*v)[0][SIZE-1] = 0.5f*((*v)[1][SIZE-1]+(*v)[0][SIZE-2]);
+  (*v)[SIZE-1][0] = 0.5f*((*v)[SIZE-2][0]+(*v)[SIZE-1][1]);
+  (*v)[SIZE-1][SIZE-1] = 0.5f*((*v)[SIZE-2][SIZE-1]+(*v)[SIZE-1][SIZE-2]);
+}
+
+void ApplyNeumannBoundary(ValueArray* v)
+{
+  unsigned x,y;
+  for (x = 1; x < SIZE-1; ++x) {
+    (*v)[x][0] = (*v)[x][1];
+    (*v)[x][SIZE-1] = (*v)[x][SIZE-2];
   }
-  gv_[WIDTH/4][HEIGHT/2] = .01;
-  gv_[(WIDTH/4)*3][HEIGHT/2] = .01;
-  gu_[WIDTH/2][HEIGHT/4] = .01;
-  gu_[WIDTH/2][(HEIGHT/4)*3] = .01;
+  for (y = 1; y < SIZE-1; ++y) {
+    (*v)[0][y] = (*v)[1][y];
+    (*v)[SIZE-1][y]= (*v)[SIZE-2][y];
+  }
+  ImputeCorners(v);
+}
+
+void ApplyDirichletBoundary(ValueArray* v, unsigned dir)
+{
+  unsigned x,y;
+  for (x = 1; x < SIZE-1; ++x) {
+    (*v)[x][0] = dir==TOPBOTTOM ? -(*v)[x][1] : (*v)[x][1];
+    (*v)[x][SIZE-1] = dir==TOPBOTTOM ? -(*v)[x][SIZE-2] : (*v)[x][SIZE-2];
+  }
+  for (y = 1; y < SIZE-1; ++y) {
+    (*v)[0][y] = dir == LEFTRIGHT ? -(*v)[1][y] : (*v)[1][y];
+    (*v)[SIZE-1][y] = dir == LEFTRIGHT ? -(*v)[SIZE-2][y] : (*v)[SIZE-2][y];
+  }
+  ImputeCorners(v);
 }
 
 float InterpolateScalar(ValueArray array, float x, float y)
 {
-  if (x < 0) x = 0;
-  if (y < 0) y = 0;
-  if (x > WIDTH-1) x = WIDTH-1;
-  if (y > HEIGHT-1) y = HEIGHT-1;
+  if (x < 0.5f) x = 0.5f;
+  if (y < 0.5f) y = 0.5f;
+  if (x > SIZE-1.0f+0.5f) x = SIZE-1.0f+0.5f;
+  if (y > SIZE-1.0f+0.5f) y = SIZE-1.0f+0.5f;
   unsigned f_x = x;
   unsigned f_y = y;
   float p_x = x-f_x;
@@ -109,28 +153,26 @@ float InterpolateScalar(ValueArray array, float x, float y)
   return (array[f_x][f_y]*(1.0-p_x)*(1.0-p_y)) + (array[f_x+1][f_y]*p_x*(1.0-p_y)) + (array[f_x][f_y+1]*(1.0-p_x)*p_y) + (array[f_x+1][f_y+1]*p_x*p_y);
 }
 
-void JacobiPoissonSolver(int iterations, float alpha, float r_beta, ValueArray* k, ValueArray* b)
+void JacobiPoissonSolver(int iterations, float a, float c, ValueArray* v, ValueArray* b)
 {
-  /* Solve Ak = b Where A = del^2 */
+  /* Solve Av = b Where A = del^2 */
   unsigned iteration,x,y;
   for (iteration = 0; iteration < iterations; ++iteration) {
-    for (x = 1; x < WIDTH-1; ++x) {
-      for (y = 1; y < HEIGHT-1; ++y) {
-           //printf("%d %d %d\n", iteration, x,y);
-           //printf("%d %d %d\n", iteration, x-1,y-1);
-          (*k)[x][y] = ((*k)[x-1][y] + (*k)[x+1][y]+ (*k)[x][y-1]+ (*k)[x][y+1] + alpha * (*b)[x][y]) * r_beta;
+    for (x = 1; x < SIZE-1; ++x) {
+      for (y = 1; y < SIZE-1; ++y) {
+        (*v)[x][y] = ((a*((*v)[x-1][y] + (*v)[x+1][y]+ (*v)[x][y-1]+ (*v)[x][y+1])) + (*b)[x][y]) / c;
       }
     }
   }
 }
 
-void Advect(ValueArray* dest, ValueArray* source, ValueArray* u, ValueArray* v, float dt)
+void Advect(ValueArray* dest, ValueArray* source, ValueArray* u, ValueArray* v)
 {
   unsigned x,y;
-  for (x = 1; x < WIDTH-1; ++x) {
-    for (y = 1; y < HEIGHT-1; ++y) {
-      float old_x = (float)x - (dt * RDX * (*u)[x][y]);
-      float old_y = (float)y - (dt * RDX * (*v)[x][y]);
+  for (x = 1; x < SIZE-1; ++x) {
+    for (y = 1; y < SIZE-1; ++y) {
+      float old_x = (float)x - (DT * SIZE * (*u)[x][y]);
+      float old_y = (float)y - (DT * SIZE * (*v)[x][y]);
       (*dest)[x][y] = InterpolateScalar(*source, old_x, old_y);
     }
   }
@@ -138,15 +180,16 @@ void Advect(ValueArray* dest, ValueArray* source, ValueArray* u, ValueArray* v, 
 
 void Diffuse(ValueArray* dest, ValueArray* source)
 {
-  JacobiPoissonSolver(20, (DX*DX)/DT, 1.0/(4.0 + (DX*DX)/DT), dest, source);
+  float a=DT*DIFFUSION*SIZE*SIZE;
+  JacobiPoissonSolver(10, a, 1+(4.0f*a), dest, source);
 }
 
 void Divergence(ValueArray* dest, ValueArray* u, ValueArray* v)
 {
   unsigned x,y;
-  for (x = 1; x < WIDTH-1; ++x) {
-    for (y = 1; y < HEIGHT-1; ++y) {
-      (*dest)[x][y] = (0.5 + RDX) * (((*u)[x-1][y] - (*u)[x+1][y]) + ((*v)[x][y-1] - (*v)[x][y+1]));
+  for (x = 1; x < SIZE-1; ++x) {
+    for (y = 1; y < SIZE-1; ++y) {
+      (*dest)[x][y] = 0.5f * (((*u)[x-1][y] - (*u)[x+1][y]) + ((*v)[x][y-1] - (*v)[x][y+1])) / SIZE;
     }
   }
 }
@@ -154,10 +197,10 @@ void Divergence(ValueArray* dest, ValueArray* u, ValueArray* v)
 void GradientSubtract(ValueArray* u, ValueArray* v, ValueArray* pressure)
 {
   unsigned x,y;
-  for (x = 1; x < WIDTH-1; ++x) {
-    for (y = 1; y < HEIGHT-1; ++y) {
-      (*u)[x][y] -= 0.5 * RDX * ((*pressure)[x+1][y] - (*pressure)[x-1][y]);
-      (*v)[x][y] -= 0.5 * RDX * ((*pressure)[x][y+1] - (*pressure)[x][y-1]);
+  for (x = 1; x < SIZE-1; ++x) {
+    for (y = 1; y < SIZE-1; ++y) {
+      (*u)[x][y] -= 0.5f * SIZE * ((*pressure)[x+1][y] - (*pressure)[x-1][y]);
+      (*v)[x][y] -= 0.5f * SIZE * ((*pressure)[x][y+1] - (*pressure)[x][y-1]);
     }
   }
 }
@@ -165,108 +208,101 @@ void GradientSubtract(ValueArray* u, ValueArray* v, ValueArray* pressure)
 void Project(ValueArray* u, ValueArray* v, ValueArray* pressure, ValueArray* div)
 {
     Divergence(div, u, v);
+    ApplyNeumannBoundary(div);
     unsigned x,y;
-    for (x = 0; x < WIDTH; ++x) {
-        for (y = 0; y < HEIGHT; ++y) {
+    for (x = 0; x < SIZE; ++x) {
+        for (y = 0; y < SIZE; ++y) {
             (*pressure)[x][y] = 0;
         }
     }
-    JacobiPoissonSolver(40, -(DX*DX), 1.0/4.0, pressure, div);
+    JacobiPoissonSolver(40, 1.0f, 4.0f, pressure, div);
+    ApplyNeumannBoundary(pressure);
     GradientSubtract(u, v, pressure);
-}
-
-void ApplyPressureBoundary(ValueArray* pressure)
-{
-  unsigned x,y;
-  for (x = 1; x < WIDTH-1; ++x) {
-    (*pressure)[x][0] = (*pressure)[x][1];
-    (*pressure)[x][HEIGHT-1] = (*pressure)[x][HEIGHT-2];
-  }
-  for (y = 1; y < HEIGHT-1; ++y) {
-    (*pressure)[0][y] = (*pressure)[1][y];
-    (*pressure)[WIDTH-1][y]= (*pressure)[WIDTH-2][y];
-  }
-}
-
-void ApplyVelocityBoundary(ValueArray* u, ValueArray* v)
-{
-  unsigned x,y;
-  for (x = 1; x < WIDTH-1; ++x) {
-    (*u)[x][0] = -(*u)[x][1];
-    (*v)[x][0] = -(*v)[x][1];
-    (*u)[x][HEIGHT-1] = -(*u)[x][HEIGHT-2];
-    (*v)[x][HEIGHT-1] = -(*v)[x][HEIGHT-2];
-  }
-  for (y = 1; y < HEIGHT-1; ++y) {
-    (*u)[0][y] = -(*u)[1][y];
-    (*v)[0][y] = -(*v)[1][y];
-    (*u)[WIDTH-1][y] = -(*u)[WIDTH-2][y];
-    (*v)[WIDTH-1][y] = -(*v)[WIDTH-2][y];
-  }
-}
-
-void PrintValue(ValueArray* array)
-{
-  unsigned x,y;
-  for (x = 0; x < WIDTH; ++x) {
-    for (y = 0; y < HEIGHT; ++y) {
-      printf("%2.1f %2.1f  ", (*array)[x][y], (*array)[x][y]);
-    }
-    printf("\n");
-  }
-}
-
-/*void PrintDebug()
-{
-  printf("Velocity\n");
-  PrintPair(velocity);
-  printf("Pressure\n");
-  PrintPair(velocity);
-  printf("TempPair\n");
-  PrintPair(temppair);
-  printf("Material\n");
-  PrintValue(material);
-  printf("TempVal\n");
-  PrintValue(tempval);
-  printf("\n");
-}*/
-
-inline void Swap(ValueArray* x, ValueArray* y)
-{
-    ValueArray* temp = x;
-    x=y;
-    y=temp;
 }
 
 void UpdateFluid()
 {
-  //VELO
-  //  PrintDebug();
-  //Add mat and force;
-  Swap(gu, gu_old);
-  Swap(gv, gv_old);
-  Diffuse(gu, gu_old);
-  Diffuse(gv, gv_old);
-  Project(gu, gv, gu_old, gv_old);
-  Swap(gu, gu_old);
-  Swap(gv, gv_old);
-  Advect(gu, gu_old, gu_old, gv_old, DT);
-  Advect(gv, gv_old, gu_old, gv_old, DT);
-  Project(gu, gv, gu_old, gv_old);
-
-  //MAT
-  //add source
-  Swap(gmaterial, gmaterial_old);
-  Diffuse(gmaterial, gmaterial_old);
-  Swap(gmaterial, gmaterial_old);
-  Advect(gmaterial, gmaterial_old, gu, gv, DT);
-
+  //VELOCITY COMPUTATIONS
   if (vel_on) {
-    (*gu)[WIDTH/2][HEIGHT/2] = 0.3;
-    (*gv)[WIDTH/2][HEIGHT/2] = 0.3;
+    (*gv)[SIZE/4][SIZE/2] = reverse ? 1.0f:-1.0f;
+    (*gv)[(SIZE/4)*3][SIZE/2] = reverse ? -1.0f:1.0f;
+    (*gu)[SIZE/2][SIZE/4] = reverse ? -1.0f:1.0f;
+    (*gu)[SIZE/2][(SIZE/4)*3] = reverse ? 1.0f:-1.0f;
+
   }
+  //  swap(gu, gu_old);
+  //swap(gv, gv_old);
+  //Diffuse(gu, gu_old);
+  //Diffuse(gv, gv_old);
+  //ApplyDirichletBoundary(gu, LEFTRIGHT);
+  //ApplyDirichletBoundary(gv, TOPBOTTOM);
 
+  Project(gu, gv, gu_old, gv_old);
+  ApplyDirichletBoundary(gu, LEFTRIGHT);
+  ApplyDirichletBoundary(gv, TOPBOTTOM);
 
+  swap(gu, gu_old);
+  swap(gv, gv_old);
+  Advect(gu, gu_old, gu_old, gv_old);
+  Advect(gv, gv_old, gu_old, gv_old);
+  ApplyDirichletBoundary(gu, LEFTRIGHT);
+  ApplyDirichletBoundary(gv, TOPBOTTOM);
+
+  Project(gu, gv, gu_old, gv_old);
+  ApplyDirichletBoundary(gu, LEFTRIGHT);
+  ApplyDirichletBoundary(gv, TOPBOTTOM);
+
+  //MATERIAL CALCULATIONS
+  unsigned i,j,l;
+  l = 0;
+  if (mat_on) {
+    for (i = 1; i < SIZE-1; ++i) {
+      for (j = 1; j < SIZE-1; ++j) {
+        (*gmaterial)[SIZE/4][SIZE/2] = mat_dir;
+        (*gmaterial)[SIZE/4][SIZE/2+1] = mat_dir;
+        (*gmaterial)[SIZE/4][SIZE/2-1] = mat_dir;
+        (*bmaterial)[SIZE/4][SIZE/2] = mat_dir;
+        (*bmaterial)[SIZE/4][SIZE/2+1] = mat_dir;
+        (*bmaterial)[SIZE/4][SIZE/2-1] = mat_dir;
+        (*rmaterial)[SIZE/4][SIZE/2] = mat_dir;
+        (*rmaterial)[SIZE/4][SIZE/2+1] = mat_dir;
+        (*rmaterial)[SIZE/4][SIZE/2-1] = mat_dir;
+        (*gmaterial)[(SIZE/4)*3][SIZE/2] = mat_dir;
+        (*gmaterial)[(SIZE/4)*3][SIZE/2+1] = mat_dir;
+        (*gmaterial)[(SIZE/4)*3][SIZE/2-1] = mat_dir;
+        (*bmaterial)[SIZE/2][SIZE/4] = mat_dir;
+        (*bmaterial)[SIZE/2+1][SIZE/4] = mat_dir;
+        (*bmaterial)[SIZE/2-1][SIZE/4] = mat_dir;
+        (*rmaterial)[SIZE/2][(SIZE/4)*3] = mat_dir;
+        (*rmaterial)[SIZE/2+1][(SIZE/4)*3] = mat_dir;
+        (*rmaterial)[SIZE/2-1][(SIZE/4)*3] = mat_dir;
+      }
+    }
+  }
+ 
+  //swap(gmaterial, gmaterial_old);
+  //Diffuse(gmaterial, gmaterial_old);
+  //ApplyNeumannBoundary(gmaterial);
+
+  swap(gmaterial, gmaterial_old);
+  Advect(gmaterial, gmaterial_old, gu, gv);
+  ApplyNeumannBoundary(gmaterial);
+
+  //swap(bmaterial, bmaterial_old);
+  //Diffuse(bmaterial, bmaterial_old);
+  //ApplyNeumannBoundary(bmaterial);
+
+  swap(bmaterial, bmaterial_old);
+  Advect(bmaterial, bmaterial_old, gu, gv);
+  ApplyNeumannBoundary(bmaterial);
+
+  //  swap(rmaterial, rmaterial_old);
+  //Diffuse(rmaterial, rmaterial_old);
+  //ApplyNeumannBoundary(rmaterial);
+
+  swap(rmaterial, rmaterial_old);
+  Advect(rmaterial, rmaterial_old, gu, gv);
+  ApplyNeumannBoundary(rmaterial);
 }
 
 /* function to release/destroy our resources and restoring the old desktop */
@@ -283,13 +319,13 @@ void Quit( int returnCode )
 int LoadGLTextures()
 {
     /* Create storage space for the texture */
-    GLubyte TextureImage[WIDTH][HEIGHT][4];
+    GLubyte TextureImage[SIZE][SIZE][4];
     int i,j;
-    for (i = 0; i < WIDTH; ++i) {
-      for (j = 0; j < HEIGHT; ++j) {
-        TextureImage[i][j][0] = (*gmaterial)[i][j] > 0 ? (*gmaterial)[i][j]*255 : 0;
+    for (i = 0; i < SIZE; ++i) {
+      for (j = 0; j < SIZE; ++j) {
+        TextureImage[i][j][0] = (*rmaterial)[i][j] > 0 ? (*rmaterial)[i][j]*255 : 0;
         TextureImage[i][j][1] = (*gmaterial)[i][j] > 0 ? (*gmaterial)[i][j]*255 : 0;
-        TextureImage[i][j][2] = (*gmaterial)[i][j] > 0 ? (*gmaterial)[i][j]*255 : 0;
+        TextureImage[i][j][2] = (*bmaterial)[i][j] > 0 ? (*bmaterial)[i][j]*255 : 0;
         TextureImage[i][j][3] = 127;
       }
     }
@@ -301,62 +337,39 @@ int LoadGLTextures()
     glBindTexture( GL_TEXTURE_2D, material_tex);
 
     /* Generate The Texture */
-    glTexImage2D( GL_TEXTURE_2D, 0, 4, WIDTH,
-                  HEIGHT, 0, GL_RGBA,
+    glTexImage2D( GL_TEXTURE_2D, 0, 4, SIZE,
+                  SIZE, 0, GL_RGBA,
                   GL_UNSIGNED_BYTE, TextureImage );
 
     /* Linear Filtering */
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 
-    for (i = 0; i < WIDTH; ++i) {
-      for (j = 0; j < HEIGHT; ++j) {
-        TextureImage[i][j][0] = ((*gu)[i][j]-0.5)*255;
-        TextureImage[i][j][1] = ((*gv)[i][j]-0.5)*255;
-        TextureImage[i][j][2] = 0;
-        TextureImage[i][j][3] = 127;
+    if (show_vel){
+      for (i = 0; i < SIZE; ++i) {
+        for (j = 0; j < SIZE; ++j) {
+          TextureImage[i][j][0] = ((*gu)[i][j]*6.0f-0.5)*255;
+          TextureImage[i][j][1] = ((*gv)[i][j]*6.0f-0.5)*255;
+          TextureImage[i][j][2] = 127;
+          TextureImage[i][j][3] = 127;
+        }
       }
+      
+      /* Create The Texture */
+      glGenTextures( 1, &velocity_tex);
+      
+      /* Typical Texture Generation Using Data From The Bitmap */
+      glBindTexture( GL_TEXTURE_2D, velocity_tex);
+      
+      /* Generate The Texture */
+      glTexImage2D( GL_TEXTURE_2D, 0, 4, SIZE,
+                    SIZE, 0, GL_RGBA,
+                    GL_UNSIGNED_BYTE, TextureImage );
+      
+      /* Linear Filtering */
+      glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+      glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
     }
-
-    /* Create The Texture */
-    glGenTextures( 1, &velocity_tex);
-
-    /* Typical Texture Generation Using Data From The Bitmap */
-    glBindTexture( GL_TEXTURE_2D, velocity_tex);
-
-    /* Generate The Texture */
-    glTexImage2D( GL_TEXTURE_2D, 0, 4, WIDTH,
-                  HEIGHT, 0, GL_RGBA,
-                  GL_UNSIGNED_BYTE, TextureImage );
-
-    /* Linear Filtering */
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-
-    for (i = 0; i < WIDTH; ++i) {
-      for (j = 0; j < HEIGHT; ++j) {
-        TextureImage[i][j][0] = 0;
-        TextureImage[i][j][1] = ((*gu_old)[i][j]-0.5)*255;
-        TextureImage[i][j][2] = 0;
-        TextureImage[i][j][3] = 127;
-      }
-    }
-
-    /* Create The Texture */
-    glGenTextures( 1, &pressure_tex);
-
-    /* Typical Texture Generation Using Data From The Bitmap */
-    glBindTexture( GL_TEXTURE_2D, pressure_tex);
-
-    /* Generate The Texture */
-    glTexImage2D( GL_TEXTURE_2D, 0, 4, WIDTH,
-                  HEIGHT, 0, GL_RGBA,
-                  GL_UNSIGNED_BYTE, TextureImage );
-
-    /* Linear Filtering */
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-
     return 1;
 }
 
@@ -408,8 +421,20 @@ void handleKeyPress( SDL_keysym *keysym )
      */
     SDL_WM_ToggleFullScreen( surface );
       break;
-  case SDLK_F2:
+  case SDLK_v:
     vel_on = !vel_on;
+    break;
+  case SDLK_d:
+    show_vel = !show_vel;
+    break;
+  case SDLK_m:
+    mat_on = !mat_on;
+    break;
+  case SDLK_r:
+    reverse = !reverse;
+    break;
+  case SDLK_n:
+    mat_dir = -mat_dir;
     break;
   default:
     break;
@@ -472,26 +497,12 @@ int drawGLScene( GLvoid )
     glRotatef( zrot, 0.0f, 0.0f, 1.0f); /* Rotate On The Z Axis */
 
     /* Select Our Texture */
-    glBindTexture( GL_TEXTURE_2D, material_tex);
-    glBegin(GL_QUADS);
-      glTexCoord2f( 0.0f, 0.0f ); glVertex3f( 0.0f, 0.0f, 1.0f );
-      glTexCoord2f( 1.0f, 0.0f ); glVertex3f(  1.0f, 0.0f, 1.0f );
-      glTexCoord2f( 1.0f, 1.0f ); glVertex3f(  1.0f,  1.0f, 1.0f );
-      glTexCoord2f( 0.0f, 1.0f ); glVertex3f( 0.0f,  1.0f, 1.0f );
-    glEnd( );
-    glBindTexture( GL_TEXTURE_2D, velocity_tex);
-    glBegin(GL_QUADS);
-      glTexCoord2f( 0.0f, 0.0f ); glVertex3f( 0.0f, -1.0f, 1.0f );
-      glTexCoord2f( 1.0f, 0.0f ); glVertex3f(  1.0f, -1.0f, 1.0f );
-      glTexCoord2f( 1.0f, 1.0f ); glVertex3f(  1.0f,  0.0f, 1.0f );
-      glTexCoord2f( 0.0f, 1.0f ); glVertex3f( 0.0f,  0.0f, 1.0f );
-    glEnd( );
-    glBindTexture( GL_TEXTURE_2D, pressure_tex);
+    glBindTexture( GL_TEXTURE_2D, show_vel ? velocity_tex : material_tex);
     glBegin(GL_QUADS);
       glTexCoord2f( 0.0f, 0.0f ); glVertex3f( -1.0f, -1.0f, 1.0f );
-      glTexCoord2f( 1.0f, 0.0f ); glVertex3f(  0.0f, -1.0f, 1.0f );
-      glTexCoord2f( 1.0f, 1.0f ); glVertex3f(  0.0f,  0.0f, 1.0f );
-      glTexCoord2f( 0.0f, 1.0f ); glVertex3f( -1.0f,  0.0f, 1.0f );
+      glTexCoord2f( 1.0f, 0.0f ); glVertex3f(  1.0f, -1.0f, 1.0f );
+      glTexCoord2f( 1.0f, 1.0f ); glVertex3f(  1.0f,  1.0f, 1.0f );
+      glTexCoord2f( 0.0f, 1.0f ); glVertex3f( -1.0f,  1.0f, 1.0f );
     glEnd( );
 
     /* Draw it to the screen */
