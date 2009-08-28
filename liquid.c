@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <GL/gl.h>
@@ -12,8 +13,6 @@
 #define SCREEN_HEIGHT 500
 #define SCREEN_BPP     16
 #define SIZE 200
-#define X 0
-#define Y 1
 
 #define DT 0.1f
 #define DIFFUSION 0.0000001f
@@ -222,13 +221,28 @@ void Project(ValueArray* u, ValueArray* v, ValueArray* pressure, ValueArray* div
 
 void UpdateFluid()
 {
+  swap(gu, gu_old);
+  swap(gv, gv_old);
+  Advect(gu, gu_old, gu_old, gv_old);
+  Advect(gv, gv_old, gu_old, gv_old);
+  ApplyDirichletBoundary(gu, LEFTRIGHT);
+  ApplyDirichletBoundary(gv, TOPBOTTOM);
   //VELOCITY COMPUTATIONS
-  if (vel_on) {
-    (*gv)[SIZE/4][SIZE/2] = reverse ? 1.0f:-1.0f;
-    (*gv)[(SIZE/4)*3][SIZE/2] = reverse ? -1.0f:1.0f;
-    (*gu)[SIZE/2][SIZE/4] = reverse ? -1.0f:1.0f;
-    (*gu)[SIZE/2][(SIZE/4)*3] = reverse ? 1.0f:-1.0f;
+  unsigned k;
+  for (k=0 ;k < 5 ;k++) {
+    if (vel_on) {
+      (*gv)[SIZE/4+k][SIZE/2] = reverse ? .05f:-.05f;
+   //   (*gu)[SIZE/4+k][SIZE/2] = .5f;
+      
+      (*gv)[(SIZE/4)*3+k][SIZE/2] = reverse ? -.05f:.05f;
+   //   (*gu)[(SIZE/4)*3+k][SIZE/2] = -.5f;
+      
+      (*gu)[SIZE/2][SIZE/4+k] = reverse ? -.05f:.05f;
+   //   (*gv)[SIZE/2][SIZE/4+k] = .5f;
 
+      (*gu)[SIZE/2][(SIZE/4)*3+k] = reverse ? .05f:-.05f;
+   //   (*gv)[SIZE/2][(SIZE/4)*3+k] =  -.5f;
+    }    
   }
   //  swap(gu, gu_old);
   //swap(gv, gv_old);
@@ -237,48 +251,16 @@ void UpdateFluid()
   //ApplyDirichletBoundary(gu, LEFTRIGHT);
   //ApplyDirichletBoundary(gv, TOPBOTTOM);
 
-  Project(gu, gv, gu_old, gv_old);
-  ApplyDirichletBoundary(gu, LEFTRIGHT);
-  ApplyDirichletBoundary(gv, TOPBOTTOM);
+  //  Project(gu, gv, gu_old, gv_old);
+  //ApplyDirichletBoundary(gu, LEFTRIGHT);
+  // ApplyDirichletBoundary(gv, TOPBOTTOM);
 
-  swap(gu, gu_old);
-  swap(gv, gv_old);
-  Advect(gu, gu_old, gu_old, gv_old);
-  Advect(gv, gv_old, gu_old, gv_old);
-  ApplyDirichletBoundary(gu, LEFTRIGHT);
-  ApplyDirichletBoundary(gv, TOPBOTTOM);
 
   Project(gu, gv, gu_old, gv_old);
   ApplyDirichletBoundary(gu, LEFTRIGHT);
   ApplyDirichletBoundary(gv, TOPBOTTOM);
 
   //MATERIAL CALCULATIONS
-  unsigned i,j,l;
-  l = 0;
-  if (mat_on) {
-    for (i = 1; i < SIZE-1; ++i) {
-      for (j = 1; j < SIZE-1; ++j) {
-        (*gmaterial)[SIZE/4][SIZE/2] = mat_dir;
-        (*gmaterial)[SIZE/4][SIZE/2+1] = mat_dir;
-        (*gmaterial)[SIZE/4][SIZE/2-1] = mat_dir;
-        (*bmaterial)[SIZE/4][SIZE/2] = mat_dir;
-        (*bmaterial)[SIZE/4][SIZE/2+1] = mat_dir;
-        (*bmaterial)[SIZE/4][SIZE/2-1] = mat_dir;
-        (*rmaterial)[SIZE/4][SIZE/2] = mat_dir;
-        (*rmaterial)[SIZE/4][SIZE/2+1] = mat_dir;
-        (*rmaterial)[SIZE/4][SIZE/2-1] = mat_dir;
-        (*gmaterial)[(SIZE/4)*3][SIZE/2] = mat_dir;
-        (*gmaterial)[(SIZE/4)*3][SIZE/2+1] = mat_dir;
-        (*gmaterial)[(SIZE/4)*3][SIZE/2-1] = mat_dir;
-        (*bmaterial)[SIZE/2][SIZE/4] = mat_dir;
-        (*bmaterial)[SIZE/2+1][SIZE/4] = mat_dir;
-        (*bmaterial)[SIZE/2-1][SIZE/4] = mat_dir;
-        (*rmaterial)[SIZE/2][(SIZE/4)*3] = mat_dir;
-        (*rmaterial)[SIZE/2+1][(SIZE/4)*3] = mat_dir;
-        (*rmaterial)[SIZE/2-1][(SIZE/4)*3] = mat_dir;
-      }
-    }
-  }
  
   //swap(gmaterial, gmaterial_old);
   //Diffuse(gmaterial, gmaterial_old);
@@ -303,6 +285,21 @@ void UpdateFluid()
   swap(rmaterial, rmaterial_old);
   Advect(rmaterial, rmaterial_old, gu, gv);
   ApplyNeumannBoundary(rmaterial);
+  int i,j;
+  if (mat_on) {
+    for (i = -2; i < 3; ++i) {
+      for (j = -2; j < 3; ++j) {
+        (*gmaterial)[SIZE/4+i][SIZE/2+j] = mat_dir;
+        (*bmaterial)[SIZE/4+i][SIZE/2+j] = mat_dir;
+        (*rmaterial)[SIZE/4+i][SIZE/2+j] = mat_dir;
+
+        (*gmaterial)[(SIZE/4)*3+i][SIZE/2+j] = mat_dir;
+        (*bmaterial)[SIZE/2+i][SIZE/4+j] = mat_dir;
+        (*rmaterial)[SIZE/2+i][(SIZE/4)*3+j] = mat_dir;
+      }
+    }
+  }
+
 }
 
 /* function to release/destroy our resources and restoring the old desktop */
@@ -330,9 +327,6 @@ int LoadGLTextures()
       }
     }
 
-    /* Create The Texture */
-    glGenTextures( 1, &material_tex);
-
     /* Typical Texture Generation Using Data From The Bitmap */
     glBindTexture( GL_TEXTURE_2D, material_tex);
 
@@ -349,14 +343,11 @@ int LoadGLTextures()
       for (i = 0; i < SIZE; ++i) {
         for (j = 0; j < SIZE; ++j) {
           TextureImage[i][j][0] = ((*gu)[i][j]*6.0f-0.5)*255;
-          TextureImage[i][j][1] = ((*gv)[i][j]*6.0f-0.5)*255;
-          TextureImage[i][j][2] = 127;
+          TextureImage[i][j][1] = 0;//((*gv)[i][j]*6.0f-0.5)*255;
+          TextureImage[i][j][2] = 0;//127;
           TextureImage[i][j][3] = 127;
         }
       }
-      
-      /* Create The Texture */
-      glGenTextures( 1, &velocity_tex);
       
       /* Typical Texture Generation Using Data From The Bitmap */
       glBindTexture( GL_TEXTURE_2D, velocity_tex);
@@ -471,6 +462,11 @@ int initGL( GLvoid )
 
     /* Really Nice Perspective Calculations */
     glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
+
+    /* Create The Texture */
+    glGenTextures( 1, &velocity_tex);
+    glGenTextures( 1, &material_tex);
+
 
     return( TRUE );
 }
@@ -612,7 +608,7 @@ int main( int argc, char **argv )
                  * shouldn't draw the screen
                  */
                 if ( event.active.gain == 0 )
-                isActive = FALSE;
+                isActive = TRUE;
                 else
                 isActive = TRUE;
                 break;
