@@ -12,7 +12,7 @@
 #define SCREEN_WIDTH  500
 #define SCREEN_HEIGHT 500
 #define SCREEN_BPP     16
-#define SIZE 250
+#define SIZE 200
 
 #define DT 0.1f
 #define DIFFUSION 0.001f
@@ -68,10 +68,25 @@ int reverse;
 int mat_dir;
 int run;
 
+typedef struct {
+  float x;
+  float y;
+} Particle;
+
+#define NUM_PARTICLES 500000
+
+Particle particles[NUM_PARTICLES];
+
+float random_float(float limit)
+{
+  return ((float)rand()/(float)RAND_MAX) * limit;
+}
+
 void InitFluid()
 {
+  
   vel_on=TRUE;
-  mat_on=TRUE;
+  mat_on=FALSE;
   show_vel=FALSE;
   reverse=FALSE;
   mat_dir = 1;
@@ -104,6 +119,12 @@ void InitFluid()
       gv_old_[i][j] = 0;
     }
   }
+  
+  for (i = 0 ; i < NUM_PARTICLES ; i++)
+    {
+      particles[i].x = random_float(SIZE-2)+1;
+      particles[i].y = random_float(SIZE-2)+1;
+    }
 }
 
 void ImputeCorners(ValueArray* v)
@@ -144,10 +165,10 @@ void ApplyDirichletBoundary(ValueArray* v, unsigned dir)
 
 float InterpolateScalar(ValueArray array, float x, float y)
 {
-  if (x < 0.0f) x = 0.0f;
-  if (y < 0.0f) y = 0.0f;
-  if (x > SIZE-1.0f) x = SIZE-1.0f;
-  if (y > SIZE-1.0f) y = SIZE-1.0f;
+  if (x < 0.0f) x = 0.5f;
+  if (y < 0.0f) y = 0.5f;
+  if (x > SIZE-1.0f) x = SIZE-1.5f;
+  if (y > SIZE-1.0f) y = SIZE-1.5f;
   unsigned f_x = x;
   unsigned f_y = y;
   float p_x = x-f_x;
@@ -167,6 +188,16 @@ void JacobiPoissonSolver(int iterations, float a, float c, ValueArray* v, ValueA
       }
     }
   }
+}
+
+void MoveParticles(ValueArray* u, ValueArray* v)
+{
+  int i;
+  for (i = 0; i < NUM_PARTICLES; i++) {
+    particles[i].x += DT*SIZE*InterpolateScalar(*u, particles[i].x, particles[i].y);
+    particles[i].y += DT*SIZE*InterpolateScalar(*v, particles[i].x, particles[i].y);
+  }
+      
 }
 
 void Advect(ValueArray* dest, ValueArray* source, ValueArray* u, ValueArray* v)
@@ -237,10 +268,10 @@ void UpdateFluid()
   unsigned k;
   for (k=0 ;k < 5 ;k++) {
     if (vel_on) {
-      (*gv)[SIZE/4+k][SIZE/2] = reverse ? .5f:-.5f;
-      (*gv)[(SIZE/4)*3+k][SIZE/2] = reverse ? -.5f:.5f;
-      (*gu)[SIZE/2][SIZE/4+k] = reverse ? -.5f:.5f;
-      (*gu)[SIZE/2][(SIZE/4)*3+k] = reverse ? .5f:-.5f;
+      (*gu)[SIZE/4+k][SIZE/2] = reverse ? .5f:-.5f;
+      (*gu)[(SIZE/4)*3+k][SIZE/2] = reverse ? -.5f:.5f;
+      (*gv)[SIZE/2][SIZE/4+k] = reverse ? .5f:-.5f;
+      (*gv)[SIZE/2][(SIZE/4)*3+k] = reverse ? -.5f:.5f;
     }    
   }
   //  swap(gu, gu_old);
@@ -254,19 +285,21 @@ void UpdateFluid()
   
   //swap(gmaterial, gmaterial_old);
   //Diffuse(gmaterial, gmaterial_old);
-  swap(gmaterial, gmaterial_old);
-  Advect(gmaterial, gmaterial_old, gu, gv);
+  //  swap(gmaterial, gmaterial_old);
+  //Advect(gmaterial, gmaterial_old, gu, gv);
 
   //swap(bmaterial, bmaterial_old);
   //Diffuse(bmaterial, bmaterial_old);
-  swap(bmaterial, bmaterial_old);
-  Advect(bmaterial, bmaterial_old, gu, gv);
+  //  swap(bmaterial, bmaterial_old);
+  //Advect(bmaterial, bmaterial_old, gu, gv);
 
   // swap(rmaterial, rmaterial_old);
   //Diffuse(rmaterial, rmaterial_old);
-  swap(rmaterial, rmaterial_old);
-  Advect(rmaterial, rmaterial_old, gu, gv);
-
+  //swap(rmaterial, rmaterial_old);
+  //Advect(rmaterial, rmaterial_old, gu, gv);
+  
+  MoveParticles(gu,gv);
+  
   int i,j;
   (*gmaterial)[0][0] = 1;
   (*gmaterial)[0][SIZE-1] = 1;
@@ -286,7 +319,7 @@ void UpdateFluid()
     }
   }
   
-  //    run = FALSE;
+  //      run = FALSE;
 }
 
 /* function to release/destroy our resources and restoring the old desktop */
@@ -455,7 +488,7 @@ int drawGLScene( GLvoid )
 
     /* Move Into The Screen 5 Units */
     glLoadIdentity( );
-    glTranslatef( 0.0f, 0.0f, -4.0f );
+    glTranslatef( 0.0f, 0.0f, -3.5f );
 
     /* Select Our Texture */
     glEnable(GL_TEXTURE_2D);
@@ -491,6 +524,12 @@ int drawGLScene( GLvoid )
       glVertex3f(  1.0f,  1.0f, 1.0f );glVertex3f( -1.0f,  1.0f, 1.0f );
       glEnd();
     }
+    glColor4f(1.0f,1.0f,1.0f,1.0f);
+    glBegin(GL_POINTS);
+    int i;
+    for (i = 0; i < NUM_PARTICLES; i++)
+      glVertex3f(toGLCoords(particles[i].x), toGLCoords(particles[i].y), 1.001f);
+    glEnd();
     
     /* Draw it to the screen */
     SDL_GL_SwapBuffers( );
