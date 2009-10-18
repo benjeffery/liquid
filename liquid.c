@@ -12,11 +12,11 @@
 #define SCREEN_WIDTH  500
 #define SCREEN_HEIGHT 500
 #define SCREEN_BPP     16
-#define SIZE 200
+#define SIZE 250
 
 #define DT 0.1f
-#define DIFFUSION 0.0000001f
-#define VISCOSITY 0.0f 
+#define DIFFUSION 0.001f
+#define VISCOSITY 0.0000001f 
 
 /* Set up some booleans */
 #define TRUE  1
@@ -66,13 +66,16 @@ int show_vel;
 int mat_on;
 int reverse;
 int mat_dir;
+int run;
+
 void InitFluid()
 {
-  vel_on=FALSE;
+  vel_on=TRUE;
   mat_on=TRUE;
   show_vel=FALSE;
   reverse=FALSE;
   mat_dir = 1;
+  run = FALSE;
 
   gu = &gu_;
   gv = &gv_;
@@ -129,22 +132,22 @@ void ApplyDirichletBoundary(ValueArray* v, unsigned dir)
 {
   unsigned x,y;
   for (x = 1; x < SIZE-1; ++x) {
-    (*v)[x][0] = dir==TOPBOTTOM ? -(*v)[x][1] : (*v)[x][1];
+    (*v)[x][0] = dir==TOPBOTTOM ? -(*v)[x][1] :  (*v)[x][1];
     (*v)[x][SIZE-1] = dir==TOPBOTTOM ? -(*v)[x][SIZE-2] : (*v)[x][SIZE-2];
   }
   for (y = 1; y < SIZE-1; ++y) {
     (*v)[0][y] = dir == LEFTRIGHT ? -(*v)[1][y] : (*v)[1][y];
-    (*v)[SIZE-1][y] = dir == LEFTRIGHT ? -(*v)[SIZE-2][y] : (*v)[SIZE-2][y];
+    (*v)[SIZE-1][y] = dir == LEFTRIGHT ? -(*v)[SIZE-2][y] :  (*v)[SIZE-2][y];
   }
   ImputeCorners(v);
 }
 
 float InterpolateScalar(ValueArray array, float x, float y)
 {
-  if (x < 0.5f) x = 0.5f;
-  if (y < 0.5f) y = 0.5f;
-  if (x > SIZE-1.0f+0.5f) x = SIZE-1.0f+0.5f;
-  if (y > SIZE-1.0f+0.5f) y = SIZE-1.0f+0.5f;
+  if (x < 0.0f) x = 0.0f;
+  if (y < 0.0f) y = 0.0f;
+  if (x > SIZE-1.0f) x = SIZE-1.0f;
+  if (y > SIZE-1.0f) y = SIZE-1.0f;
   unsigned f_x = x;
   unsigned f_y = y;
   float p_x = x-f_x;
@@ -157,6 +160,7 @@ void JacobiPoissonSolver(int iterations, float a, float c, ValueArray* v, ValueA
   /* Solve Av = b Where A = del^2 */
   unsigned iteration,x,y;
   for (iteration = 0; iteration < iterations; ++iteration) {
+    ApplyNeumannBoundary(v);
     for (x = 1; x < SIZE-1; ++x) {
       for (y = 1; y < SIZE-1; ++y) {
         (*v)[x][y] = ((a*((*v)[x-1][y] + (*v)[x+1][y]+ (*v)[x][y-1]+ (*v)[x][y+1])) + (*b)[x][y]) / c;
@@ -167,6 +171,7 @@ void JacobiPoissonSolver(int iterations, float a, float c, ValueArray* v, ValueA
 
 void Advect(ValueArray* dest, ValueArray* source, ValueArray* u, ValueArray* v)
 {
+  ApplyNeumannBoundary(source);
   unsigned x,y;
   for (x = 1; x < SIZE-1; ++x) {
     for (y = 1; y < SIZE-1; ++y) {
@@ -180,7 +185,7 @@ void Advect(ValueArray* dest, ValueArray* source, ValueArray* u, ValueArray* v)
 void Diffuse(ValueArray* dest, ValueArray* source)
 {
   float a=DT*DIFFUSION*SIZE*SIZE;
-  JacobiPoissonSolver(10, a, 1+(4.0f*a), dest, source);
+  JacobiPoissonSolver(40, a, 1+(4.0f*a), dest, source);
 }
 
 void Divergence(ValueArray* dest, ValueArray* u, ValueArray* v)
@@ -206,6 +211,8 @@ void GradientSubtract(ValueArray* u, ValueArray* v, ValueArray* pressure)
 
 void Project(ValueArray* u, ValueArray* v, ValueArray* pressure, ValueArray* div)
 {
+    ApplyDirichletBoundary(u, LEFTRIGHT);
+    ApplyDirichletBoundary(v, TOPBOTTOM);
     Divergence(div, u, v);
     ApplyNeumannBoundary(div);
     unsigned x,y;
@@ -214,78 +221,57 @@ void Project(ValueArray* u, ValueArray* v, ValueArray* pressure, ValueArray* div
             (*pressure)[x][y] = 0;
         }
     }
-    JacobiPoissonSolver(40, 1.0f, 4.0f, pressure, div);
+    JacobiPoissonSolver(100, 1.0f, 4.0f, pressure, div);
     ApplyNeumannBoundary(pressure);
     GradientSubtract(u, v, pressure);
 }
 
 void UpdateFluid()
 {
+  //VELOCITY COMPUTATIONS
   swap(gu, gu_old);
   swap(gv, gv_old);
   Advect(gu, gu_old, gu_old, gv_old);
   Advect(gv, gv_old, gu_old, gv_old);
-  ApplyDirichletBoundary(gu, LEFTRIGHT);
-  ApplyDirichletBoundary(gv, TOPBOTTOM);
-  //VELOCITY COMPUTATIONS
+
   unsigned k;
   for (k=0 ;k < 5 ;k++) {
     if (vel_on) {
-      (*gv)[SIZE/4+k][SIZE/2] = reverse ? .05f:-.05f;
-   //   (*gu)[SIZE/4+k][SIZE/2] = .5f;
-      
-      (*gv)[(SIZE/4)*3+k][SIZE/2] = reverse ? -.05f:.05f;
-   //   (*gu)[(SIZE/4)*3+k][SIZE/2] = -.5f;
-      
-      (*gu)[SIZE/2][SIZE/4+k] = reverse ? -.05f:.05f;
-   //   (*gv)[SIZE/2][SIZE/4+k] = .5f;
-
-      (*gu)[SIZE/2][(SIZE/4)*3+k] = reverse ? .05f:-.05f;
-   //   (*gv)[SIZE/2][(SIZE/4)*3+k] =  -.5f;
+      (*gv)[SIZE/4+k][SIZE/2] = reverse ? .5f:-.5f;
+      (*gv)[(SIZE/4)*3+k][SIZE/2] = reverse ? -.5f:.5f;
+      (*gu)[SIZE/2][SIZE/4+k] = reverse ? -.5f:.5f;
+      (*gu)[SIZE/2][(SIZE/4)*3+k] = reverse ? .5f:-.5f;
     }    
   }
   //  swap(gu, gu_old);
   //swap(gv, gv_old);
   //Diffuse(gu, gu_old);
   //Diffuse(gv, gv_old);
-  //ApplyDirichletBoundary(gu, LEFTRIGHT);
-  //ApplyDirichletBoundary(gv, TOPBOTTOM);
-
-  //  Project(gu, gv, gu_old, gv_old);
-  //ApplyDirichletBoundary(gu, LEFTRIGHT);
-  // ApplyDirichletBoundary(gv, TOPBOTTOM);
-
 
   Project(gu, gv, gu_old, gv_old);
-  ApplyDirichletBoundary(gu, LEFTRIGHT);
-  ApplyDirichletBoundary(gv, TOPBOTTOM);
 
   //MATERIAL CALCULATIONS
- 
+  
   //swap(gmaterial, gmaterial_old);
   //Diffuse(gmaterial, gmaterial_old);
-  //ApplyNeumannBoundary(gmaterial);
-
   swap(gmaterial, gmaterial_old);
   Advect(gmaterial, gmaterial_old, gu, gv);
-  ApplyNeumannBoundary(gmaterial);
 
   //swap(bmaterial, bmaterial_old);
   //Diffuse(bmaterial, bmaterial_old);
-  //ApplyNeumannBoundary(bmaterial);
-
   swap(bmaterial, bmaterial_old);
   Advect(bmaterial, bmaterial_old, gu, gv);
-  ApplyNeumannBoundary(bmaterial);
 
-  //  swap(rmaterial, rmaterial_old);
+  // swap(rmaterial, rmaterial_old);
   //Diffuse(rmaterial, rmaterial_old);
-  //ApplyNeumannBoundary(rmaterial);
-
   swap(rmaterial, rmaterial_old);
   Advect(rmaterial, rmaterial_old, gu, gv);
-  ApplyNeumannBoundary(rmaterial);
+
   int i,j;
+  (*gmaterial)[0][0] = 1;
+  (*gmaterial)[0][SIZE-1] = 1;
+  (*gmaterial)[SIZE-1][0] = 1;
+  (*gmaterial)[SIZE-1][SIZE-1] = 1;
   if (mat_on) {
     for (i = -2; i < 3; ++i) {
       for (j = -2; j < 3; ++j) {
@@ -299,7 +285,8 @@ void UpdateFluid()
       }
     }
   }
-
+  
+  //    run = FALSE;
 }
 
 /* function to release/destroy our resources and restoring the old desktop */
@@ -320,10 +307,10 @@ int LoadGLTextures()
     int i,j;
     for (i = 0; i < SIZE; ++i) {
       for (j = 0; j < SIZE; ++j) {
-        TextureImage[i][j][0] = (*rmaterial)[i][j] > 0 ? (*rmaterial)[i][j]*255 : 0;
-        TextureImage[i][j][1] = (*gmaterial)[i][j] > 0 ? (*gmaterial)[i][j]*255 : 0;
-        TextureImage[i][j][2] = (*bmaterial)[i][j] > 0 ? (*bmaterial)[i][j]*255 : 0;
-        TextureImage[i][j][3] = 127;
+        TextureImage[j][i][0] = (*rmaterial)[i][j] > 0 ? (*rmaterial)[i][j]*255 : 0;
+        TextureImage[j][i][1] = (*gmaterial)[i][j] > 0 ? (*gmaterial)[i][j]*255 : 0;
+        TextureImage[j][i][2] = (*bmaterial)[i][j] > 0 ? (*bmaterial)[i][j]*255 : 0;
+        TextureImage[j][i][3] = 255;
       }
     }
 
@@ -338,29 +325,6 @@ int LoadGLTextures()
     /* Linear Filtering */
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-
-    if (show_vel){
-      for (i = 0; i < SIZE; ++i) {
-        for (j = 0; j < SIZE; ++j) {
-          TextureImage[i][j][0] = ((*gu)[i][j]*6.0f-0.5)*255;
-          TextureImage[i][j][1] = 0;//((*gv)[i][j]*6.0f-0.5)*255;
-          TextureImage[i][j][2] = 0;//127;
-          TextureImage[i][j][3] = 127;
-        }
-      }
-      
-      /* Typical Texture Generation Using Data From The Bitmap */
-      glBindTexture( GL_TEXTURE_2D, velocity_tex);
-      
-      /* Generate The Texture */
-      glTexImage2D( GL_TEXTURE_2D, 0, 4, SIZE,
-                    SIZE, 0, GL_RGBA,
-                    GL_UNSIGNED_BYTE, TextureImage );
-      
-      /* Linear Filtering */
-      glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-      glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-    }
     return 1;
 }
 
@@ -427,6 +391,9 @@ void handleKeyPress( SDL_keysym *keysym )
   case SDLK_n:
     mat_dir = -mat_dir;
     break;
+  case SDLK_g:
+    run = !run;
+    break;
   default:
     break;
   }
@@ -438,8 +405,6 @@ int initGL( GLvoid )
 {
 
     InitFluid();
-    /* Enable Texture Mapping ( NEW ) */
-    glEnable( GL_TEXTURE_2D );
 
     /* Enable smooth shading */
     glShadeModel(GL_SMOOTH);
@@ -456,19 +421,23 @@ int initGL( GLvoid )
     /* The Type Of Depth Test To Do */
     glDepthFunc( GL_LEQUAL );
 
-    /*glBlendFunc(GL_SRC_ALPHA,GL_ONE);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE);
     glEnable(GL_BLEND);
-    glDisable(GL_DEPTH_TEST);*/
+    glDisable(GL_DEPTH_TEST);
 
     /* Really Nice Perspective Calculations */
     glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
 
     /* Create The Texture */
-    glGenTextures( 1, &velocity_tex);
     glGenTextures( 1, &material_tex);
 
 
     return( TRUE );
+}
+
+float toGLCoords(float x)
+{
+  return (x/(float)(SIZE))*2.0f - 1.0 ;
 }
 
 /* Here goes our drawing code */
@@ -488,19 +457,41 @@ int drawGLScene( GLvoid )
     glLoadIdentity( );
     glTranslatef( 0.0f, 0.0f, -4.0f );
 
-    glRotatef( xrot, 1.0f, 0.0f, 0.0f); /* Rotate On The X Axis */
-    glRotatef( yrot, 0.0f, 1.0f, 0.0f); /* Rotate On The Y Axis */
-    glRotatef( zrot, 0.0f, 0.0f, 1.0f); /* Rotate On The Z Axis */
-
     /* Select Our Texture */
-    glBindTexture( GL_TEXTURE_2D, show_vel ? velocity_tex : material_tex);
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture( GL_TEXTURE_2D, material_tex);
     glBegin(GL_QUADS);
       glTexCoord2f( 0.0f, 0.0f ); glVertex3f( -1.0f, -1.0f, 1.0f );
       glTexCoord2f( 1.0f, 0.0f ); glVertex3f(  1.0f, -1.0f, 1.0f );
       glTexCoord2f( 1.0f, 1.0f ); glVertex3f(  1.0f,  1.0f, 1.0f );
       glTexCoord2f( 0.0f, 1.0f ); glVertex3f( -1.0f,  1.0f, 1.0f );
     glEnd( );
+    glDisable(GL_TEXTURE_2D);
 
+    if (show_vel){
+      glColor4f(1.0f,1.0f,1.0f,0.5f);
+      glBegin(GL_LINES);{
+        unsigned x,y;
+        for (x = 0; x < SIZE; x+=1) {
+          for (y = 0; y < SIZE; y+=1) {
+            float x_off =  x + 0.5f;
+            float y_off =  y + 0.5f;
+            glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
+            glColor4f(1.0f,1.0f,1.0f,0.5f);
+            glVertex3f(toGLCoords(x_off - (2.0f*DT*SIZE*(*gu)[x][y])), 
+                       toGLCoords(y_off - (2.0f*DT*SIZE*(*gv)[x][y])),
+                       1.001f);
+            glColor4f(1.0f,1.0f,1.0f,1.0f);
+          }
+        }
+      }
+      glVertex3f( -1.0f,  1.0f, 1.0f );glVertex3f( -1.0f, -1.0f, 1.0f );
+      glVertex3f( -1.0f, -1.0f, 1.0f );glVertex3f(  1.0f, -1.0f, 1.0f );
+      glVertex3f(  1.0f, -1.0f, 1.0f );glVertex3f(  1.0f,  1.0f, 1.0f );
+      glVertex3f(  1.0f,  1.0f, 1.0f );glVertex3f( -1.0f,  1.0f, 1.0f );
+      glEnd();
+    }
+    
     /* Draw it to the screen */
     SDL_GL_SwapBuffers( );
 
@@ -517,12 +508,8 @@ int drawGLScene( GLvoid )
     }
     }
 
-    xrot += 0.00f; /* X Axis Rotation */
-    yrot += 0.00f; /* Y Axis Rotation */
-    zrot += 0.00f; /* Z Axis Rotation */
-
-    UpdateFluid();
-
+    if (run)
+      UpdateFluid();
     return( TRUE );
 }
 
