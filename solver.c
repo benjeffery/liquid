@@ -161,12 +161,12 @@ void Project(ValueArray* u, ValueArray* v, ValueArray* pressure, ValueArray* div
 
 void Squirt(int reverse)
 {
-  unsigned k;
-  for (k=0 ;k < 5 ;k++) {
-      (*gu)[SIZE/4+k][SIZE/2] = reverse ? .5f:-.5f;
-      (*gu)[(SIZE/4)*3+k][SIZE/2] = reverse ? -.5f:.5f;
-      (*gv)[SIZE/2][SIZE/4+k] = reverse ? .5f:-.5f;
-      (*gv)[SIZE/2][(SIZE/4)*3+k] = reverse ? -.5f:.5f;
+  int k;
+  for (k=-7 ;k < 8 ;k++) {
+      (*gu)[SIZE/4][SIZE/2+k] = reverse ? .2f:-.2f;
+      (*gu)[(SIZE/4)*3][SIZE/2+k] = reverse ? -.2f:.2f;
+      (*gv)[SIZE/2+k][SIZE/4] = reverse ? .2f:-.2f;
+      (*gv)[SIZE/2+k][(SIZE/4)*3] = reverse ? -.2f:.2f;
   }
 }
 
