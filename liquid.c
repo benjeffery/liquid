@@ -9,6 +9,8 @@
 /* screen width, height, and bit depth */
 #define SCREEN_WIDTH  500
 #define SCREEN_HEIGHT 500
+#define FULL_WIDTH 1240
+#define FULL_HEIGHT 1028
 #define SCREEN_BPP     16
 
 /* Set up some booleans */
@@ -17,6 +19,8 @@
 
 /* This is our SDL surface */
 SDL_Surface *surface;
+/* Flags to pass to SDL_SetVideoMode */
+int videoFlags;
 
 GLfloat xpos; 
 GLfloat ypos; 
@@ -75,8 +79,17 @@ void handleKeyPress( SDL_keysym *keysym )
     /* F1 key was pressed
      * this toggles fullscreen mode
      */
+    surface = SDL_SetVideoMode( FULL_WIDTH,
+                                FULL_HEIGHT,
+                                16, videoFlags );
+    if ( !surface )
+      {
+        fprintf( stderr, "Could not get a surface after resize: %s\n", SDL_GetError( ) );
+        Quit( 1 );
+      }
+    resizeWindow(FULL_WIDTH,  FULL_HEIGHT);
     SDL_WM_ToggleFullScreen( surface );
-      break;
+    break;
   case SDLK_v:
     vel_on = !vel_on;
     break;
@@ -210,8 +223,6 @@ int drawGLScene( GLvoid )
 
 int main( int argc, char **argv )
 {
-  /* Flags to pass to SDL_SetVideoMode */
-  int videoFlags;
   /* main loop variable */
   int done = FALSE;
   /* used to collect events */
