@@ -31,17 +31,5 @@ ParticleArray* particles;
 
 float random_float(float min, float max);
 void InitFluid();
-void ImputeCorners(ValueArray* v);
-void ApplyNeumannBoundary(ValueArray* v);
-void ApplyDirichletBoundary(ValueArray* v, unsigned dir);
-float InterpolateScalar(ValueArray array, float x, float y);
-void JacobiPoissonSolver(int iterations, float a, float c, ValueArray* v, ValueArray* b);
-void MoveParticles(ValueArray* u, ValueArray* v);
-void Advect(ValueArray* dest, ValueArray* source, ValueArray* u, ValueArray* v);
-void Diffuse(ValueArray* dest, ValueArray* source);
-void Divergence(ValueArray* dest, ValueArray* u, ValueArray* v);
-void GradientSubtract(ValueArray* u, ValueArray* v, ValueArray* pressure);
-void Project(ValueArray* u, ValueArray* v, ValueArray* pressure, ValueArray* div);
-void Squirt();
 void UpdateFluid(int squirt, int reverse);
 #endif
