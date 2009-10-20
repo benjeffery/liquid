@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define NUM_PARTICLES 500000
+#define NUM_PARTICLES 200000
 #define SIZE 250
 #define DT 0.1f
 #define TOPBOTTOM 1
