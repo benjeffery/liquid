@@ -12,10 +12,10 @@
 #define SCREEN_WIDTH  500
 #define SCREEN_HEIGHT 500
 #define SCREEN_BPP     16
-#define SIZE 200
+#define SIZE 250
 
 #define DT 0.1f
-#define DIFFUSION 0.001f
+#define DIFFUSION 0.0001f
 #define VISCOSITY 0.0000001f 
 
 /* Set up some booleans */
@@ -29,13 +29,9 @@
 /* This is our SDL surface */
 SDL_Surface *surface;
 
-GLfloat xrot; /* X Rotation ( NEW ) */
-GLfloat yrot; /* Y Rotation ( NEW ) */
-GLfloat zrot; /* Z Rotation ( NEW ) */
-
-GLuint material_tex;
-GLuint velocity_tex;
-GLuint pressure_tex;
+GLfloat xpos; 
+GLfloat ypos; 
+GLfloat zoom; 
 
 typedef float Value;
 typedef Value ValueArray[SIZE][SIZE];
@@ -48,18 +44,6 @@ ValueArray gu_old_;
 ValueArray* gu_old;
 ValueArray gv_old_;
 ValueArray* gv_old;
-ValueArray gmaterial_;
-ValueArray* gmaterial;
-ValueArray gmaterial_old_;
-ValueArray* gmaterial_old;
-ValueArray bmaterial_;
-ValueArray* bmaterial;
-ValueArray bmaterial_old_;
-ValueArray* bmaterial_old;
-ValueArray rmaterial_;
-ValueArray* rmaterial;
-ValueArray rmaterial_old_;
-ValueArray* rmaterial_old;
 
 int vel_on;
 int show_vel;
@@ -85,6 +69,9 @@ float random_float(float limit)
 void InitFluid()
 {
   
+  xpos = 0;
+  ypos = 0;
+  zoom = -3.5;
   vel_on=TRUE;
   mat_on=FALSE;
   show_vel=FALSE;
@@ -96,23 +83,13 @@ void InitFluid()
   gv = &gv_;
   gu_old = &gu_old_;
   gv_old = &gv_old_;
-  gmaterial = &gmaterial_;
-  gmaterial_old = &gmaterial_old_;
-  rmaterial = &rmaterial_;
-  rmaterial_old = &rmaterial_old_;
-  bmaterial = &bmaterial_;
-  bmaterial_old = &bmaterial_old_;
+
 
   int i,j,l;
   l = 0;
   for (i = 0; i < SIZE; ++i) {
     for (j = 0; j < SIZE; ++j) {
-      gmaterial_[i][j] = 0;
-      gmaterial_old_[i][j] = 0;
-      bmaterial_[i][j] = 0;
-      bmaterial_old_[i][j] = 0;
-      rmaterial_[i][j] = 0;
-      rmaterial_old_[i][j] = 0;
+
       gu_[i][j] = 0;
       gv_[i][j] = 0;
       gu_old_[i][j] = 0;
@@ -274,7 +251,7 @@ void UpdateFluid()
       (*gv)[SIZE/2][(SIZE/4)*3+k] = reverse ? -.5f:.5f;
     }    
   }
-  //  swap(gu, gu_old);
+  // swap(gu, gu_old);
   //swap(gv, gv_old);
   //Diffuse(gu, gu_old);
   //Diffuse(gv, gv_old);
@@ -300,25 +277,6 @@ void UpdateFluid()
   
   MoveParticles(gu,gv);
   
-  int i,j;
-  (*gmaterial)[0][0] = 1;
-  (*gmaterial)[0][SIZE-1] = 1;
-  (*gmaterial)[SIZE-1][0] = 1;
-  (*gmaterial)[SIZE-1][SIZE-1] = 1;
-  if (mat_on) {
-    for (i = -2; i < 3; ++i) {
-      for (j = -2; j < 3; ++j) {
-        (*gmaterial)[SIZE/4+i][SIZE/2+j] = mat_dir;
-        (*bmaterial)[SIZE/4+i][SIZE/2+j] = mat_dir;
-        (*rmaterial)[SIZE/4+i][SIZE/2+j] = mat_dir;
-
-        (*gmaterial)[(SIZE/4)*3+i][SIZE/2+j] = mat_dir;
-        (*bmaterial)[SIZE/2+i][SIZE/4+j] = mat_dir;
-        (*rmaterial)[SIZE/2+i][(SIZE/4)*3+j] = mat_dir;
-      }
-    }
-  }
-  
   //      run = FALSE;
 }
 
@@ -332,34 +290,6 @@ void Quit( int returnCode )
     exit( returnCode );
 }
 
-/* function to load in bitmap as a GL texture */
-int LoadGLTextures()
-{
-    /* Create storage space for the texture */
-    GLubyte TextureImage[SIZE][SIZE][4];
-    int i,j;
-    for (i = 0; i < SIZE; ++i) {
-      for (j = 0; j < SIZE; ++j) {
-        TextureImage[j][i][0] = (*rmaterial)[i][j] > 0 ? (*rmaterial)[i][j]*255 : 0;
-        TextureImage[j][i][1] = (*gmaterial)[i][j] > 0 ? (*gmaterial)[i][j]*255 : 0;
-        TextureImage[j][i][2] = (*bmaterial)[i][j] > 0 ? (*bmaterial)[i][j]*255 : 0;
-        TextureImage[j][i][3] = 255;
-      }
-    }
-
-    /* Typical Texture Generation Using Data From The Bitmap */
-    glBindTexture( GL_TEXTURE_2D, material_tex);
-
-    /* Generate The Texture */
-    glTexImage2D( GL_TEXTURE_2D, 0, 4, SIZE,
-                  SIZE, 0, GL_RGBA,
-                  GL_UNSIGNED_BYTE, TextureImage );
-
-    /* Linear Filtering */
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-    return 1;
-}
 
 /* function to reset our viewport after a window resize */
 int resizeWindow( int width, int height )
@@ -412,7 +342,7 @@ void handleKeyPress( SDL_keysym *keysym )
   case SDLK_v:
     vel_on = !vel_on;
     break;
-  case SDLK_d:
+  case SDLK_b:
     show_vel = !show_vel;
     break;
   case SDLK_m:
@@ -426,6 +356,24 @@ void handleKeyPress( SDL_keysym *keysym )
     break;
   case SDLK_g:
     run = !run;
+    break;
+  case SDLK_w:
+    ypos += 0.11;
+    break;
+  case SDLK_s:
+    ypos -= 0.11;
+    break;
+  case SDLK_a:
+    xpos -= 0.11;
+    break;
+  case SDLK_d:
+    xpos += 0.11;
+    break;
+  case SDLK_q:
+    zoom += 0.11;
+    break;
+  case SDLK_e:
+    zoom -= 0.11;
     break;
   default:
     break;
@@ -461,10 +409,6 @@ int initGL( GLvoid )
     /* Really Nice Perspective Calculations */
     glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
 
-    /* Create The Texture */
-    glGenTextures( 1, &material_tex);
-
-
     return( TRUE );
 }
 
@@ -479,7 +423,6 @@ int drawGLScene( GLvoid )
   //    usleep(1000000);
 
     /* These are to calculate our fps */
-    LoadGLTextures();
     static GLint T0     = 0;
     static GLint Frames = 0;
 
@@ -488,19 +431,9 @@ int drawGLScene( GLvoid )
 
     /* Move Into The Screen 5 Units */
     glLoadIdentity( );
-    glTranslatef( 0.0f, 0.0f, -3.5f );
+    glTranslatef( xpos, ypos, zoom );
 
     /* Select Our Texture */
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture( GL_TEXTURE_2D, material_tex);
-    glBegin(GL_QUADS);
-      glTexCoord2f( 0.0f, 0.0f ); glVertex3f( -1.0f, -1.0f, 1.0f );
-      glTexCoord2f( 1.0f, 0.0f ); glVertex3f(  1.0f, -1.0f, 1.0f );
-      glTexCoord2f( 1.0f, 1.0f ); glVertex3f(  1.0f,  1.0f, 1.0f );
-      glTexCoord2f( 0.0f, 1.0f ); glVertex3f( -1.0f,  1.0f, 1.0f );
-    glEnd( );
-    glDisable(GL_TEXTURE_2D);
-
     if (show_vel){
       glColor4f(1.0f,1.0f,1.0f,0.5f);
       glBegin(GL_LINES);{
@@ -511,8 +444,8 @@ int drawGLScene( GLvoid )
             float y_off =  y + 0.5f;
             glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
             glColor4f(1.0f,1.0f,1.0f,0.5f);
-            glVertex3f(toGLCoords(x_off - (2.0f*DT*SIZE*(*gu)[x][y])), 
-                       toGLCoords(y_off - (2.0f*DT*SIZE*(*gv)[x][y])),
+            glVertex3f(toGLCoords(x_off + (3.0f*DT*SIZE*(*gu)[x][y])), 
+                       toGLCoords(y_off + (3.0f*DT*SIZE*(*gv)[x][y])),
                        1.001f);
             glColor4f(1.0f,1.0f,1.0f,1.0f);
           }
