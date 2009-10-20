@@ -95,10 +95,12 @@ void JacobiPoissonSolver(int iterations, float a, float c, ValueArray* v, ValueA
 
 void MoveParticles(ValueArray* u, ValueArray* v)
 {
-  int i;
-  for (i = 0; i < NUM_PARTICLES; i++) {
-    (*particles)[i].x += DT*SIZE*InterpolateScalar(*u, (*particles)[i].x, (*particles)[i].y);
-    (*particles)[i].y += DT*SIZE*InterpolateScalar(*v, (*particles)[i].x, (*particles)[i].y);
+  int i,k;
+  for (k=0; k<4 ; k++) {
+    for (i = 0; i < NUM_PARTICLES; i++) {
+      (*particles)[i].x += (1.0f/4.0f)*DT*SIZE*InterpolateScalar(*u, (*particles)[i].x, (*particles)[i].y);
+      (*particles)[i].y += (1.0f/4.0f)*DT*SIZE*InterpolateScalar(*v, (*particles)[i].x, (*particles)[i].y);
+    }
   }
 }
 
