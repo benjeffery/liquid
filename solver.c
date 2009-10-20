@@ -96,6 +96,7 @@ void JacobiPoissonSolver(int iterations, float a, float c, ValueArray* v, ValueA
 void MoveParticles(ValueArray* u, ValueArray* v)
 {
   int i,k;
+  //Should be replaced by a proper ODE integrator
   for (k=0; k<4 ; k++) {
     for (i = 0; i < NUM_PARTICLES; i++) {
       (*particles)[i].x += (1.0f/4.0f)*DT*SIZE*InterpolateScalar(*u, (*particles)[i].x, (*particles)[i].y);
@@ -163,12 +164,14 @@ void Project(ValueArray* u, ValueArray* v, ValueArray* pressure, ValueArray* div
 
 void Squirt(int reverse)
 {
-  int k;
-  for (k=-7 ;k < 8 ;k++) {
-      (*gu)[SIZE/4][SIZE/2+k] = reverse ? .2f:-.2f;
-      (*gu)[(SIZE/4)*3][SIZE/2+k] = reverse ? -.2f:.2f;
-      (*gv)[SIZE/2+k][SIZE/4] = reverse ? .2f:-.2f;
-      (*gv)[SIZE/2+k][(SIZE/4)*3] = reverse ? -.2f:.2f;
+  int k,j;
+  for (j=-7 ;j < 8 ;j++) {
+    for (k=-7 ;k < 8 ;k++) {
+      (*gu)[SIZE/4+j][SIZE/2+k] = reverse ? .2f:-.2f;
+      (*gu)[(SIZE/4)*3+j][SIZE/2+k] = reverse ? -.2f:.2f;
+      (*gv)[SIZE/2+k][SIZE/4+j] = reverse ? .2f:-.2f;
+      (*gv)[SIZE/2+k][(SIZE/4)*3+j] = reverse ? -.2f:.2f;
+    }
   }
 }
 
