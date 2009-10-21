@@ -96,11 +96,11 @@ void handleKeyPress( SDL_keysym *keysym )
   case SDLK_b:
     show_vel = !show_vel;
     break;
-  case SDLK_r:
-    reverse = !reverse;
-    break;
   case SDLK_g:
     run = !run;
+    break;
+  case SDLK_r:
+    ResetFluid();
     break;
   case SDLK_w:
     ypos += 0.11;
@@ -198,7 +198,7 @@ int drawGLScene( GLvoid )
   glColor4f(1.0f,1.0f,1.0f,1.0f);
   glBegin(GL_POINTS);
   int i;
-  for (i = 0; i < NUM_PARTICLES; i++)
+  for (i = 0; i < num_particles; i++)
     glVertex3f(toGLCoords((*particles)[i].x), toGLCoords((*particles)[i].y), 1.001f);
   glEnd();
   
@@ -216,8 +216,8 @@ int drawGLScene( GLvoid )
     Frames = 0;
   }
   if (run)
-    UpdateFluid(vel_on, reverse);
-  // run = FALSE
+    UpdateFluid();
+  //    run = FALSE;
   return(TRUE);
 }
 
