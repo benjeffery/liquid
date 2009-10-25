@@ -8,23 +8,30 @@
 #define FALSE 0
 
 #define NUM_PARTICLES_PER_CELL 4
-#define SIZE 200
+#define SIZE 60
 #define DT 0.1f
-#define TOPBOTTOM 1
-#define LEFTRIGHT 2
+
+#define U 1
+#define V 2
+
+#define SOLID 1
+#define FLUID 2
+#define AIR 3
+
 #define BOTH 3
 #define DIFFUSION 0.0001
 
 #define swap(x,y) {ValueArray* temp = x; x=y; y=temp;}
 
 typedef float Value;
-typedef Value ValueArray[SIZE][SIZE];
+typedef Value EdgeArray[SIZE+1][SIZE+1];
+typedef Value CentreArray[SIZE][SIZE];
 typedef int IntArray[SIZE][SIZE];
 
-ValueArray* gu;
-ValueArray* gv;
-ValueArray* gu_old;
-ValueArray* gv_old;
+EdgeArray* gu;
+EdgeArray* gv;
+CentreArray* divergance;
+CentreArray* pressure;
 IntArray*   has_fluid;
 
 typedef struct {

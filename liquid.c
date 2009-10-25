@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <unistd.h>
@@ -147,11 +148,12 @@ int initGL( GLvoid )
   glEnable( GL_DEPTH_TEST );
   /* The Type Of Depth Test To Do */
   glDepthFunc( GL_LEQUAL );
-  glBlendFunc(GL_SRC_ALPHA,GL_ONE);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_BLEND);
   glDisable(GL_DEPTH_TEST);
   /* Really Nice Perspective Calculations */
   glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
+  glEnable(GL_POINT_SMOOTH);
   return( TRUE );
 }
 
@@ -171,19 +173,19 @@ int drawGLScene( GLvoid )
   /* Move Into The Screen 5 Units */
   glLoadIdentity( );
   glTranslatef( xpos, ypos, zoom );
-  /* Select Our Texture */
+
   if (show_vel){
     glColor4f(1.0f,1.0f,1.0f,0.5f);
     glBegin(GL_LINES);{
       unsigned x,y;
       for (x = 0; x < SIZE; x+=1) {
         for (y = 0; y < SIZE; y+=1) {
-          float x_off =  x + 0.5f;
-          float y_off =  y + 0.5f;
+          float x_off =  x;
+          float y_off =  y;
           glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
           glColor4f(1.0f,1.0f,1.0f,0.5f);
-          glVertex3f(toGLCoords(x_off + (3.0f*DT*SIZE*(*gu)[x][y])), 
-                     toGLCoords(y_off + (3.0f*DT*SIZE*(*gv)[x][y])),
+          glVertex3f(toGLCoords(x_off + (1.0f*DT*SIZE*(*gu)[x][y])), 
+                     toGLCoords(y_off + (1.0f*DT*SIZE*(*gv)[x][y])),
                      1.001f);
           glColor4f(1.0f,1.0f,1.0f,1.0f);
         }
@@ -196,12 +198,29 @@ int drawGLScene( GLvoid )
     glEnd();
   }
   glColor4f(1.0f,1.0f,1.0f,1.0f);
-  glBegin(GL_POINTS);
-  int i;
-  for (i = 0; i < num_particles; i++)
-    glVertex3f(toGLCoords((*particles)[i].x), toGLCoords((*particles)[i].y), 1.001f);
-  glEnd();
-  
+  glPointSize(1.0);
+  glBegin(GL_POINTS);{
+    int i;
+    for (i = 0; i < num_particles; i++)
+      glVertex3f(toGLCoords((*particles)[i].x), toGLCoords((*particles)[i].y), 1.001f);
+    glEnd();
+  }
+  unsigned x,y;
+  for (x = 0; x < SIZE-1; x+=1) {
+    for (y = 0; y < SIZE-1; y+=1) {
+      float x_off =  x + 0.5f;
+      float y_off =  y + 0.5f;
+      if ((*divergance)[x][y]*5000.0f > 0)
+        glColor4f(0.0f, 1.0f, 0.0f, 1.0f);
+      else
+        glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+      glPointSize(fabs((*divergance)[x][y]*5000.0f));
+      glBegin(GL_POINTS);{
+        glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
+        glEnd();
+      }
+    }
+  }
   /* Draw it to the screen */
   SDL_GL_SwapBuffers( );
   /* Gather our frames per second */
@@ -217,7 +236,7 @@ int drawGLScene( GLvoid )
   }
   if (run)
     UpdateFluid();
-  //    run = FALSE;
+      run = FALSE;
   return(TRUE);
 }
 
