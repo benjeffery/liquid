@@ -110,7 +110,7 @@ void JacobiPoissonSolver(int iterations, float a, float c, CentreArray v, Centre
           v[x][y] = ((a*(v[x-1][y] + v[x+1][y]+ v[x][y-1]+ v[x][y+1])) + b[x][y]) / c;
       }
     }
-  }
+  } 
 }
 
 void MoveParticles(EdgeArray u, EdgeArray v)
@@ -216,10 +216,10 @@ void TransferParticlesToGrid(EdgeArray u, EdgeArray v, CentreArray sum_of_weight
 void GravityToGrid(EdgeArray v)
 {
   int i,j;
-  for (i = 30; i < 32; ++i) 
-    for (j = 1; j < 4; ++j) 
+  for (i = 0; i < SIZE+1; ++i) 
+    for (j = 0; j < SIZE+1; ++j) 
       //      if ((*has_fluid)[i][j] == FLUID)
-        v[i][j] -= 0.1*DT;
+        v[i][j] += 0.1*DT;
 }
 
 void UpdateFluid()

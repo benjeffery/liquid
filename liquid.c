@@ -175,16 +175,28 @@ int drawGLScene( GLvoid )
   glTranslatef( xpos, ypos, zoom );
 
   if (show_vel){
-    glColor4f(1.0f,1.0f,1.0f,0.5f);
+    glColor4f(1.0f,1.0f,1.0f,1.0f);
     glBegin(GL_LINES);{
       unsigned x,y;
-      for (x = 0; x < SIZE; x+=1) {
-        for (y = 0; y < SIZE; y+=1) {
+      for (x = 0; x < SIZE+1; x+=1) {
+        for (y = 0; y < SIZE+1; y+=1) {
           float x_off =  x;
+          float y_off =  y+0.5f;
+          glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
+          glColor4f(1.0f,1.0f,1.0f,0.5f);
+          glVertex3f(toGLCoords(x_off + (2.0f*DT*SIZE*(*gu)[x][y])), 
+                     toGLCoords(y_off),
+                     1.001f);
+          glColor4f(1.0f,1.0f,1.0f,1.0f);
+        }
+      }
+      for (x = 0; x < SIZE+1; x+=1) {
+        for (y = 0; y < SIZE+1; y+=1) {
+          float x_off =  x+0.5f;
           float y_off =  y;
           glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
           glColor4f(1.0f,1.0f,1.0f,0.5f);
-          glVertex3f(toGLCoords(x_off + (1.0f*DT*SIZE*(*gu)[x][y])), 
+          glVertex3f(toGLCoords(x_off), 
                      toGLCoords(y_off + (1.0f*DT*SIZE*(*gv)[x][y])),
                      1.001f);
           glColor4f(1.0f,1.0f,1.0f,1.0f);
