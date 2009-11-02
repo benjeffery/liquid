@@ -7,8 +7,8 @@ float random_float(float min, float max)
 
 void InitFluid()
 {
-  gu = (EdgeArray*) malloc(sizeof(EdgeArray));
-  gv = (EdgeArray*) malloc(sizeof(EdgeArray));
+  u = (EdgeArray*) malloc(sizeof(EdgeArray));
+  v = (EdgeArray*) malloc(sizeof(EdgeArray));
   divergance = (CentreArray*) malloc(sizeof(CentreArray));
   pressure = (CentreArray*) malloc(sizeof(CentreArray));
   particles = (ParticleArray*) malloc(sizeof(ParticleArray));
@@ -20,6 +20,7 @@ void InitFluid()
   aux = (CentreArray*) malloc(sizeof(CentreArray));
   search = (CentreArray*) malloc(sizeof(CentreArray));
   res = (CentreArray*) malloc(sizeof(CentreArray));
+  weight = (CentreArray*) malloc(sizeof(CentreArray));
   ResetFluid();
 }
 
@@ -44,7 +45,7 @@ void PrintIntArray(IntArray a)
     printf("\n");
   }
 }
-void FastSweep(EdgeArray u, EdgeArray v)
+void FastSweep()
 {
   unsigned sweep_num,sweep_dir,i,j;
   //Set distance to be bigger than any line on grid
@@ -52,7 +53,7 @@ void FastSweep(EdgeArray u, EdgeArray v)
     for (j = 0; j < SIZE+1 ; j++)
       (*distance)[i][j] = SIZE*SIZE;
 
-  int sweep_dirs[4][2] = {{0,-1},{-1,0},{0,1},{1,0}}; 
+  int sweep_dirs[4][2] = {{0,-1},{-1,0},{0,1},{1,0}};
   int inner_sweep_dir[2];
   for (sweep_num = 0; sweep_num < 4; sweep_num++) {
     for (sweep_dir = 0; sweep_dir < 4; sweep_dir++) {
@@ -70,52 +71,52 @@ void FastSweep(EdgeArray u, EdgeArray v)
               closest = SIZE*SIZE+1;
               //Check each of our neighbours
               if ((*cell_type)[i-1][j] == FLUID) {
-                  u[i][j] = u[i-1][j]; v[i][j] = v[i-1][j];
+                  (*u)[i][j] = (*u)[i-1][j]; (*v)[i][j] = (*v)[i-1][j];
                   (*distance)[i][j] = 1;
                   continue;
               }
               if ((*cell_type)[i-1][j] == AIR) {
                 if ((*distance)[i-1][j] < (*distance)[i][j]) {
                   closest = (*distance)[i-1][j];
-                  c_u = u[i-1][j]; c_v = v[i-1][j];
+                  c_u = (*u)[i-1][j]; c_v = (*v)[i-1][j];
                 }
               }
               if ((*cell_type)[i+1][j] == FLUID) {
-                  u[i][j] = u[i+1][j]; v[i][j] = v[i+1][j];
+                  (*u)[i][j] = (*u)[i+1][j]; (*v)[i][j] = (*v)[i+1][j];
                   (*distance)[i][j] = 1;
                   continue;
               }
               if ((*cell_type)[i+1][j] == AIR) {
                 if ((*distance)[i+1][j] < (*distance)[i][j]) {
                   closest = (*distance)[i+1][j];
-                  c_u = u[i+1][j]; c_v = v[i+1][j];
+                  c_u = (*u)[i+1][j]; c_v = (*v)[i+1][j];
                 }
               }
               if ((*cell_type)[i][j-1] == FLUID) {
-                u[i][j] = u[i][j-1]; v[i][j] = v[i][j-1];
+                (*u)[i][j] = (*u)[i][j-1]; (*v)[i][j] = (*v)[i][j-1];
                 (*distance)[i][j] = 1;
                 continue;
               }
               if ((*cell_type)[i][j-1] == AIR) {
                 if ((*distance)[i][j-1] < (*distance)[i][j]) {
                   closest = (*distance)[i][j-1];
-                  c_u = u[i][j-1]; c_v = v[i][j-1];
+                  c_u = (*u)[i][j-1]; c_v = (*v)[i][j-1];
                 }
               }
               if ((*cell_type)[i][j+1] == FLUID) {
-                u[i][j] = u[i][j+1]; v[i][j] = v[i][j+1];
+                (*u)[i][j] = (*u)[i][j+1]; (*v)[i][j] = (*v)[i][j+1];
                 (*distance)[i][j] = 1;
                 continue;
               }
               if ((*cell_type)[i][j+1] == AIR) {
                 if ((*distance)[i][j+1] < (*distance)[i][j]) {
                   closest = (*distance)[i][j+1];
-                  c_u = u[i][j+1]; c_v = v[i][j+1];
+                  c_u = (*u)[i][j+1]; c_v = (*v)[i][j+1];
                 }
               }
               if (closest < (*distance)[i][j]) {
                 (*distance)[i][j] = closest+1;
-                u[i][j] = c_u; v[i][j] = c_v;
+                (*u)[i][j] = c_u; (*v)[i][j] = c_v;
               }
             }
         }
@@ -127,12 +128,12 @@ void FastSweep(EdgeArray u, EdgeArray v)
 void ResetFluid()
 {
   int i,j,k;
-  for (i = 0; i < SIZE+1; ++i) 
-    for (j = 0; j < SIZE+1; ++j) 
-      (*gu)[i][j] = 0;
-  for (i = 0; i < SIZE+1; ++i) 
-    for (j = 0; j < SIZE+1; ++j) 
-      (*gv)[i][j] = 0;
+  for (i = 0; i < SIZE+1; ++i)
+    for (j = 0; j < SIZE+1; ++j)
+      (*u)[i][j] = 0;
+  for (i = 0; i < SIZE+1; ++i)
+    for (j = 0; j < SIZE+1; ++j)
+      (*v)[i][j] = 0;
 
   int c = 0;
   for (i = 0 ; i < NUM_PARTICLES_PER_CELL ; i++) {
@@ -147,8 +148,8 @@ void ResetFluid()
       }
     }
     //Pool below
-    for (j = 2; j < SIZE-2; j++) {
-      for (k = 2; k < SIZE/3; k++) {
+    for (j = 3; j < SIZE-3; j++) {
+      for (k = 3; k < SIZE/2; k++) {
         (*particles)[c].x = random_float((float)j-0.5f,(float)j+0.5f);
         (*particles)[c].y = random_float((float)k-0.5f,(float)k+0.5f);
         (*particles)[c].u = 0.0f;
@@ -175,70 +176,81 @@ float InterpolateEdge(EdgeArray a, float x, float y, int type)
   unsigned idx_y = y;
   float cell_x = x-idx_x;
   float cell_y = y-idx_y;
-  return (a[idx_x][idx_y]*(1.0-cell_x)*(1.0-cell_y)) + 
-         (a[idx_x+1][idx_y]*cell_x*(1.0-cell_y)) + 
-         (a[idx_x][idx_y+1]*(1.0-cell_x)*cell_y) + 
+  return (a[idx_x][idx_y]*(1.0-cell_x)*(1.0-cell_y)) +
+         (a[idx_x+1][idx_y]*cell_x*(1.0-cell_y)) +
+         (a[idx_x][idx_y+1]*(1.0-cell_x)*cell_y) +
          (a[idx_x+1][idx_y+1]*cell_x*cell_y);
 }
 
-void MoveParticles(EdgeArray u, EdgeArray v)
+void MoveParticles()
 {
   int i,k;
   //Should be replaced by a proper ODE integrator
   float p_u,p_v;
   for (i = 0; i < num_particles; i++) {
     for (k=0; k<4 ; k++) {
-      p_u = InterpolateEdge(u, (*particles)[i].x, (*particles)[i].y, U);
-      p_v = InterpolateEdge(v, (*particles)[i].x, (*particles)[i].y, V);
-      (*particles)[i].x += (1.0f/4.0f)*DT*SIZE*p_u;
-      (*particles)[i].y += (1.0f/4.0f)*DT*SIZE*p_v;
+      p_u = InterpolateEdge((*u), (*particles)[i].x, (*particles)[i].y, U);
+      p_v = InterpolateEdge((*v), (*particles)[i].x, (*particles)[i].y, V);
+      (*particles)[i].x += (1.0f/4.0f)*DT*p_u;
+      (*particles)[i].y += (1.0f/4.0f)*DT*p_v;
     }
     (*particles)[i].u = p_u;
     (*particles)[i].v = p_v;
   }
 }
 
-void Divergence(CentreArray dest, EdgeArray u, EdgeArray v)
+void Divergence()
 {
   unsigned x,y;
   for (x = 0; x < SIZE+1; ++x) {
-    u[0][x] = u[1][x] = u[SIZE][x] = u[SIZE-1][x]=0;
-    v[x][0] = v[x][1] = v[x][SIZE] = v[x][SIZE-1]=0;
+    (*u)[0][x] = (*u)[1][x] = (*u)[SIZE][x] = (*u)[SIZE-1][x]=0;
+    (*v)[x][0] = (*v)[x][1] = (*v)[x][SIZE] = (*v)[x][SIZE-1]=0;
   }
-  for (x = 0; x < SIZE; ++x) 
-    for (y = 0; y < SIZE; ++y) 
-      if ((*cell_type)[x][y] == FLUID)
-        dest[x][y] = -(u[x+1][y]- u[x][y]) + (v[x][y+1] - v[x][y]);
-      else
-        dest[x][y] = 0;
-  //Correct for boundaries
-  for (x = 0; x < SIZE; ++x) {
-    for (y = 0; y < SIZE; ++y) { 
-      if ((*cell_type)[x][y] == FLUID) {
-          //Where 0 read usolid
-        if ((*cell_type)[x-1][y] == SOLID) 
-          dest[x][y] -= (u[x][y] - 0);
-        if ((*cell_type)[x+1][y] == SOLID)
-          dest[x][y] += (u[x+1][y] - 0);
 
-        if ((*cell_type)[x][y-1] == SOLID) 
-          dest[x][y] -= (u[x][y] - 0);
-        if ((*cell_type)[x][y+1] == SOLID)
-          dest[x][y] += (u[x][y+1] - 0);
+  for (x = 0; x < SIZE; ++x) {
+    for (y = 0; y < SIZE; ++y) {
+      if ((*cell_type)[x][y] == FLUID) {
+        //printf("1 %f %f  %f %f  %f\n", (*u)[x][y], (*u)[x+1][y], (*v)[x][y], (*u)[x][y+1], (*divergance)[x][y]);
+        (*divergance)[x][y] = -(((*u)[x+1][y]- (*u)[x][y]) + ((*v)[x][y+1] - (*v)[x][y]));
+        //printf("2 %f %f  %f %f  %f\n", (*u)[x][y], (*u)[x+1][y], (*v)[x][y], (*u)[x][y+1], (*divergance)[x][y]);
+      }
+      else {
+        (*divergance)[x][y] = 0.0;
       }
     }
-  } 
+  }
+
+  //Correct for boundaries
+  for (x = 0; x < SIZE; ++x) {
+    for (y = 0; y < SIZE; ++y) {
+      if ((*cell_type)[x][y] == FLUID) {
+          //Where 0 read usolid
+        if ((*cell_type)[x-1][y] == SOLID)
+          (*divergance)[x][y] -= ((*u)[x][y] - 0);
+        if ((*cell_type)[x+1][y] == SOLID)
+          (*divergance)[x][y] += ((*u)[x+1][y] - 0);
+
+        if ((*cell_type)[x][y-1] == SOLID)
+          (*divergance)[x][y] -= ((*u)[x][y] - 0);
+        if ((*cell_type)[x][y+1] == SOLID)
+          (*divergance)[x][y] += ((*u)[x][y+1] - 0);
+      }
+    }
+  }
+
 }
 
-void GradientSubtract(EdgeArray u, EdgeArray v, CentreArray pressure)
+void GradientSubtract()
 {
   unsigned x,y;
   for (x = 1; x < SIZE; ++x) {
     for (y = 1; y < SIZE; ++y) {
-      if (((*cell_type)[x][y] | (*cell_type)[x-1][y]) == FLUID)
-        u[x][y] -= (pressure[x][y] - pressure[x-1][y]);
-      if (((*cell_type)[x][y] | (*cell_type)[x][y-1]) == FLUID)
-        v[x][y] -= (pressure[x][y] - pressure[x][y-1]);
+      if (((*cell_type)[x][y] | (*cell_type)[x-1][y]) == FLUID) {
+        (*u)[x][y] -= ((*pressure)[x][y] - (*pressure)[x-1][y]);
+      }
+      if (((*cell_type)[x][y] | (*cell_type)[x][y-1]) == FLUID) {
+        (*v)[x][y] -= ((*pressure)[x][y] - (*pressure)[x][y-1]);
+      }
     }
   }
 }
@@ -255,7 +267,6 @@ void ApplyPreconditioner()
 
 void Solve()
 {
-  printf("solve");
   int i,j;
   float scale = 1.0f;
   //Form matrix A
@@ -290,7 +301,7 @@ void Solve()
     }
   }
 
-  for (i = 0; i < SIZE; ++i) 
+  for (i = 0; i < SIZE; ++i)
     for (j = 0; j < SIZE; ++j)
       (*res)[i][j] = (*divergance)[i][j];
 
@@ -299,25 +310,25 @@ void Solve()
     for (j = 0; j < SIZE; ++j)
       if (fabs((*res)[i][j]) > max_res)
         max_res = fabs((*res)[i][j]);
-  
+
   if (max_res == 0) return;
-  
+
   ApplyPreconditioner();
-    
-  for (i = 0; i < SIZE; ++i) 
+
+  for (i = 0; i < SIZE; ++i)
     for (j = 0; j < SIZE; ++j)
       (*search)[i][j] = (*aux)[i][j];
 
   double sigma = 0;
   double sigma_new = 0;
-  for (i = 0; i < SIZE; ++i) 
+  for (i = 0; i < SIZE; ++i)
     for (j = 0; j < SIZE; ++j)
       sigma += (*aux)[i][j] * (*res)[i][j];
 
   int iterations = 0;
   while (iterations < 100) {
     ++iterations;
-    for (i = 0; i < SIZE; ++i) 
+    for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
         if ((*cell_type)[i][j] == FLUID)
           (*aux)[i][j] = (*a_diag)[i][j] * (*search)[i][j]
@@ -325,27 +336,27 @@ void Solve()
             + (*a_plusi)[i][j] * (*search)[i+1][j]
             + (*a_plusj)[i][j-1] * (*search)[i][j-1]
             + (*a_plusj)[i][j] * (*search)[i][j+1];
-    
+
     double temp = 0;
-    for (i = 0; i < SIZE; ++i) 
+    for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
         temp += (*aux)[i][j] * (*search)[i][j];
-    
+
     double alpha = sigma/temp;
     for (i = 0; i < SIZE; ++i)
-      for (j = 0; j < SIZE; ++j) 
+      for (j = 0; j < SIZE; ++j)
         (*pressure)[i][j] += alpha * (*search)[i][j];
     for (i = 0; i < SIZE; ++i)
-      for (j = 0; j < SIZE; ++j) 
+      for (j = 0; j < SIZE; ++j)
         (*res)[i][j] -= alpha * (*aux)[i][j];
-    
+
     float max_res = 0;
     for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
         if (fabs((*res)[i][j]) > max_res)
           max_res = fabs((*res)[i][j]);
-    
-    /*    printf("type\n");
+
+/*    printf("type\n");
     PrintIntArray(*cell_type);
     printf("divergance\n");
     PrintArray(*divergance);
@@ -363,50 +374,50 @@ void Solve()
     PrintArray(*res);
     printf("search\n");
     PrintArray(*search);*/
-    printf("%f\n", max_res);
-    printf("%i\n", iterations);
-    
+    //printf("%f\n", max_res);
+    //printf("%i\n", iterations);
+
     if (max_res < 0.00005) return;
 
     ApplyPreconditioner();
 
     sigma_new = 0;
-    for (i = 0; i < SIZE; ++i) 
+    for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
         sigma_new += (*aux)[i][j] * (*res)[i][j];
-    
+
     double beta = sigma_new/sigma;
-    
-    for (i = 0; i < SIZE; ++i) 
+
+    for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
         (*search)[i][j] = (*aux)[i][j] + beta*(*search)[i][j];
-    
+
     sigma = sigma_new;
-  } 
+  }
 }
 
-void Project(EdgeArray u, EdgeArray v, CentreArray div, CentreArray pressure)
+void Project()
 {
-  Divergence(div, u, v);
+  Divergence();
   Solve();
-  GradientSubtract(u, v, pressure);
+  GradientSubtract();
 }
 
-void TransferParticlesToGrid(EdgeArray u, EdgeArray v, CentreArray sum_of_weights)
+void TransferParticlesToGrid()
 {
   int i,j;
-  for (i = 0; i < SIZE; ++i) 
-    for (j = 0; j < SIZE; ++j) 
+  for (i = 0; i < SIZE; ++i)
+    for (j = 0; j < SIZE; ++j)
       (*cell_type)[i][j] = AIR;
-  for (i = 0; i < SIZE; ++i) 
-    for (j = 0; j < SIZE; ++j) 
-      sum_of_weights[i][j] = 0.0f;
-  for (i = 0; i < SIZE+1; ++i) 
-    for (j = 0; j < SIZE+1; ++j) 
-      u[i][j] = 0.0f;
-  for (i = 0; i < SIZE+1; ++i) 
-    for (j = 0; j < SIZE+1; ++j) 
-      v[i][j] = 0.0f;
+  for (i = 0; i < SIZE; ++i)
+    for (j = 0; j < SIZE; ++j)
+      (*weight)[i][j] = 0.0f;
+  for (i = 0; i < SIZE+1; ++i)
+    for (j = 0; j < SIZE+1; ++j)
+      (*u)[i][j] = 0.0f;
+  for (i = 0; i < SIZE+1; ++i)
+    for (j = 0; j < SIZE+1; ++j)
+      (*v)[i][j] = 0.0f;
 
   //TODO Particles should effect neighbouring cells and have proper weighting
   for (i = 0; i < num_particles; ++i) {
@@ -414,15 +425,15 @@ void TransferParticlesToGrid(EdgeArray u, EdgeArray v, CentreArray sum_of_weight
     unsigned y = (*particles)[i].y;
     //Mark the cell containing the box as fluid
     (*cell_type)[x][y] = FLUID;
-    u[x][y] += (*particles)[i].u;
-    v[x][y] += (*particles)[i].v;
-    sum_of_weights[x][y] += 1.0f;
+    (*u)[x][y] += (*particles)[i].u;
+    (*v)[x][y] += (*particles)[i].v;
+    (*weight)[x][y] += 1.0f;
   }
   for (i = 0; i < SIZE; ++i) {
-    for (j = 0; j < SIZE; ++j) { 
-      if (sum_of_weights[i][j] > 0) {
-        u[i][j] /= sum_of_weights[i][j]; 
-        v[i][j] /= sum_of_weights[i][j]; 
+    for (j = 0; j < SIZE; ++j) {
+      if ((*cell_type)[i][j] == FLUID) {
+        (*u)[i][j] /= (*weight)[i][j];
+        (*v)[i][j] /= (*weight)[i][j];
       }
     }
   }
@@ -433,23 +444,23 @@ void TransferParticlesToGrid(EdgeArray u, EdgeArray v, CentreArray sum_of_weight
   for (j = 1; j < SIZE-1; ++j) {
     (*cell_type)[j][0] = SOLID;
     (*cell_type)[j][SIZE-1] = SOLID;
-  }   
+  }
 }
 
-void GravityToGrid(EdgeArray v)
+void GravityToGrid()
 {
   int i,j;
-  for (i = 0; i < SIZE+1; ++i) 
-    for (j = 0; j < SIZE+1; ++j) 
-        v[i][j] -= 0.1*DT;
+  for (i = 0; i < SIZE+1; ++i)
+    for (j = 0; j < SIZE+1; ++j)
+      (*v)[i][j] -= 0.1;
 }
 
-void UpdateFluid()
+void UpdateFluid(int vel_on)
 {
-  TransferParticlesToGrid(*gu, *gv, *divergance);
-  GravityToGrid(*gv);
-  FastSweep(*gu, *gv);
-  Project(*gu, *gv, *divergance, *pressure);
-  FastSweep(*gu, *gv);
-  MoveParticles(*gu,*gv);
+  TransferParticlesToGrid();
+  GravityToGrid();
+  FastSweep();
+  Project();
+  FastSweep();
+  MoveParticles();
 }

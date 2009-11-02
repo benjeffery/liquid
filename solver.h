@@ -29,8 +29,8 @@ typedef Value EdgeArray[SIZE+1][SIZE+1];
 typedef Value CentreArray[SIZE][SIZE];
 typedef int IntArray[SIZE][SIZE];
 
-EdgeArray* gu;
-EdgeArray* gv;
+EdgeArray* u;
+EdgeArray* v;
 CentreArray* divergance;
 CentreArray* pressure;
 IntArray*   cell_type;
@@ -41,6 +41,7 @@ CentreArray* a_plusj;
 CentreArray* aux;
 CentreArray* search;
 CentreArray* res;
+CentreArray* weight;
 
 
 typedef struct {
@@ -57,6 +58,6 @@ int num_particles;
 
 float random_float(float min, float max);
 void InitFluid();
-void UpdateFluid();
+void UpdateFluid(int vel_on);
 void ResetFluid();
 #endif

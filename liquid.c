@@ -23,9 +23,9 @@ SDL_Surface *surface;
 /* Flags to pass to SDL_SetVideoMode */
 int videoFlags;
 
-GLfloat xpos; 
-GLfloat ypos; 
-GLfloat zoom; 
+GLfloat xpos;
+GLfloat ypos;
+GLfloat zoom;
 
 int vel_on;
 int show_other;
@@ -189,7 +189,7 @@ int drawGLScene( GLvoid )
           float y_off =  y+0.5f;
           glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
           glColor4f(1.0f,1.0f,1.0f,0.5f);
-          glVertex3f(toGLCoords(x_off + (2.0f*DT*SIZE*(*gu)[x][y])), 
+          glVertex3f(toGLCoords(x_off + (2.0f*DT*(*u)[x][y])),
                      toGLCoords(y_off),
                      1.001f);
           glColor4f(1.0f,1.0f,1.0f,1.0f);
@@ -201,8 +201,8 @@ int drawGLScene( GLvoid )
           float y_off =  y;
           glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
           glColor4f(1.0f,1.0f,1.0f,0.5f);
-          glVertex3f(toGLCoords(x_off), 
-                     toGLCoords(y_off + (1.0f*DT*SIZE*(*gv)[x][y])),
+          glVertex3f(toGLCoords(x_off),
+                     toGLCoords(y_off + (1.0f*DT*(*v)[x][y])),
                      1.001f);
           glColor4f(1.0f,1.0f,1.0f,1.0f);
         }
@@ -232,7 +232,7 @@ int drawGLScene( GLvoid )
           glColor4f(0.0f, 1.0f, 0.0f, 1.0f);
         else
           glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
-        glPointSize((*pressure)[x][y]*100.0f);
+        glPointSize(fabs((*pressure)[x][y])*1000.0f);
         glBegin(GL_POINTS);{
           glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
           glEnd();
@@ -244,7 +244,7 @@ int drawGLScene( GLvoid )
   SDL_GL_SwapBuffers( );
   /* Gather our frames per second */
   Frames++;
-  
+
   GLint t = SDL_GetTicks();
   if (t - T0 >= 5000) {
     GLfloat seconds = (t - T0) / 1000.0;
@@ -254,8 +254,8 @@ int drawGLScene( GLvoid )
     Frames = 0;
   }
   if (run)
-    UpdateFluid();
-      run = FALSE;
+    UpdateFluid(vel_on);
+        //run = FALSE;
   return(TRUE);
 }
 
@@ -269,7 +269,7 @@ int main( int argc, char **argv )
   const SDL_VideoInfo *videoInfo;
   /* whether or not the window is active */
   int isActive = TRUE;
-  
+
   /* initialize SDL */
   if ( SDL_Init( SDL_INIT_VIDEO ) < 0 )
     {
@@ -277,58 +277,58 @@ int main( int argc, char **argv )
                SDL_GetError( ) );
       Quit( 1 );
     }
-  
+
   /* Fetch the video info */
   videoInfo = SDL_GetVideoInfo( );
-  
+
   if ( !videoInfo )
     {
       fprintf( stderr, "Video query failed: %s\n",
                SDL_GetError( ) );
       Quit( 1 );
     }
-  
+
   /* the flags to pass to SDL_SetVideoMode */
   videoFlags  = SDL_OPENGL;          /* Enable OpenGL in SDL */
   videoFlags |= SDL_GL_DOUBLEBUFFER; /* Enable double buffering */
   videoFlags |= SDL_HWPALETTE;       /* Store the palette in hardware */
   videoFlags |= SDL_RESIZABLE;       /* Enable window resizing */
-  
+
   /* This checks to see if surfaces can be stored in memory */
   if ( videoInfo->hw_available )
     videoFlags |= SDL_HWSURFACE;
   else
     videoFlags |= SDL_SWSURFACE;
-  
+
   /* This checks if hardware blits can be done */
   if ( videoInfo->blit_hw )
     videoFlags |= SDL_HWACCEL;
-  
+
   /* Sets up OpenGL double buffering */
   SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1 );
-  
+
   /* get a SDL surface */
   surface = SDL_SetVideoMode( SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BPP,
                               videoFlags );
-  
+
   /* Verify there is a surface */
   if ( !surface )
     {
       fprintf( stderr,  "Video mode set failed: %s\n", SDL_GetError( ) );
       Quit( 1 );
     }
-  
+
   /* initialize OpenGL */
   initGL( );
-  
+
   /* resize the initial window */
   resizeWindow( SCREEN_WIDTH, SCREEN_HEIGHT );
-  
+
   /* wait for events */
   while ( !done )
     {
       /* handle the events in the queue */
-      
+
       while ( SDL_PollEvent( &event ) )
         {
           switch( event.type )
@@ -367,15 +367,15 @@ int main( int argc, char **argv )
               break;
             }
         }
-      
+
       /* draw the scene */
       if ( isActive )
         drawGLScene( );
     }
-  
+
   /* clean ourselves up and exit */
   Quit( 0 );
-  
+
   /* Should never get here */
   return( 0 );
 }
