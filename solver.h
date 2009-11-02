@@ -3,12 +3,13 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 #define TRUE 1
 #define FALSE 0
 
 #define NUM_PARTICLES_PER_CELL 4
-#define SIZE 60
+#define SIZE 100
 #define DT 0.1f
 
 #define U 1
@@ -32,7 +33,15 @@ EdgeArray* gu;
 EdgeArray* gv;
 CentreArray* divergance;
 CentreArray* pressure;
-IntArray*   has_fluid;
+IntArray*   cell_type;
+EdgeArray* distance;
+CentreArray* a_diag;
+CentreArray* a_plusi;
+CentreArray* a_plusj;
+CentreArray* aux;
+CentreArray* search;
+CentreArray* res;
+
 
 typedef struct {
   float x;
