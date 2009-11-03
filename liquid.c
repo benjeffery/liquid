@@ -232,7 +232,7 @@ int drawGLScene( GLvoid )
           glColor4f(0.0f, 1.0f, 0.0f, 1.0f);
         else
           glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
-        glPointSize(fabs((*pressure)[x][y])*1000.0f);
+        glPointSize(fabs((*pressure)[x][y])*10.0f);
         glBegin(GL_POINTS);{
           glVertex3f(toGLCoords(x_off), toGLCoords(y_off), 1.001f);
           glEnd();

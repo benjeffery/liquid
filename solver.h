@@ -23,6 +23,7 @@
 #define DIFFUSION 0.0001
 
 #define swap(x,y) {ValueArray* temp = x; x=y; y=temp;}
+#define sqr(x) ((x)*(x))
 
 typedef float Value;
 typedef Value EdgeArray[SIZE+1][SIZE+1];
@@ -42,6 +43,8 @@ CentreArray* aux;
 CentreArray* search;
 CentreArray* res;
 CentreArray* weight;
+CentreArray* precon;
+CentreArray* m;
 
 
 typedef struct {

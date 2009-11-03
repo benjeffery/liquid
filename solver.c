@@ -21,6 +21,8 @@ void InitFluid()
   search = (CentreArray*) malloc(sizeof(CentreArray));
   res = (CentreArray*) malloc(sizeof(CentreArray));
   weight = (CentreArray*) malloc(sizeof(CentreArray));
+  precon = (CentreArray*) malloc(sizeof(CentreArray));
+  m = (CentreArray*) malloc(sizeof(CentreArray));
   ResetFluid();
 }
 
@@ -148,8 +150,8 @@ void ResetFluid()
       }
     }
     //Pool below
-    for (j = 3; j < SIZE-3; j++) {
-      for (k = 3; k < SIZE/2; k++) {
+    for (j = 2; j < SIZE-3; j++) {
+      for (k = 2; k < SIZE/5; k++) {
         (*particles)[c].x = random_float((float)j-0.5f,(float)j+0.5f);
         (*particles)[c].y = random_float((float)k-0.5f,(float)k+0.5f);
         (*particles)[c].u = 0.0f;
@@ -162,24 +164,54 @@ void ResetFluid()
   num_particles = c;
 }
 
+void bary_x(float x, int* i, float* fx)
+{
+  float sx=x;
+  (*i)=(int)sx;
+  (*fx)=sx-floor(sx);
+}
+
+void bary_x_centre(float x, int* i, float* fx)
+{
+  float sx=x-0.5;
+  (*i)=(int)sx;
+  if((*i)<0){ (*i)=0; (*fx)=0.0; }
+  else if((*i)>SIZE-2){ (*i)=SIZE-2; (*fx)=1.0; }
+  else{ (*fx)=sx-floor(sx); }
+}
+
+void bary_y(float y, int* j, float* fy)
+{
+  float sy=y;
+  (*j)=(int)sy;
+  (*fy)=sy-floor(sy);
+}
+
+void bary_y_centre(float y, int* j, float* fy)
+{
+  float sy=y-0.5;
+  (*j)=(int)sy;
+  if((*j)<0){ (*j)=0; (*fy)=0.0; }
+  else if((*j)>SIZE-2){ (*j)=SIZE-2; (*fy)=1.0; }
+  else{ (*fy)=sy-floor(sy); }
+}
+
 float InterpolateEdge(EdgeArray a, float x, float y, int type)
 {
-  if (x < 0.5f) x = 0.5f;
-  if (y < 0.5f) y = 0.5f;
-  if (x > SIZE-0.5f) x = SIZE-0.5f;
-  if (y > SIZE-0.5f) y = SIZE-0.5f;
-  if (type == U)
-    y -= 0.5f;
-  if (type == V)
-    x -= 0.5f;
-  unsigned idx_x = x;
-  unsigned idx_y = y;
-  float cell_x = x-idx_x;
-  float cell_y = y-idx_y;
-  return (a[idx_x][idx_y]*(1.0-cell_x)*(1.0-cell_y)) +
-         (a[idx_x+1][idx_y]*cell_x*(1.0-cell_y)) +
-         (a[idx_x][idx_y+1]*(1.0-cell_x)*cell_y) +
-         (a[idx_x+1][idx_y+1]*cell_x*cell_y);
+  int i,j;
+  float cell_x,cell_y;
+  if (type == U) {
+    bary_x(x, &i, &cell_x);
+    bary_y_centre(y, &j, &cell_y);
+  }
+  else {
+    bary_x_centre(x, &i, &cell_x);
+    bary_y(y, &j, &cell_y);
+  }
+  return (a[i][j]*(1.0-cell_x)*(1.0-cell_y)) +
+         (a[i+1][j]*cell_x*(1.0-cell_y)) +
+         (a[i][j+1]*(1.0-cell_x)*cell_y) +
+         (a[i+1][j+1]*cell_x*cell_y);
 }
 
 void MoveParticles()
@@ -255,14 +287,53 @@ void GradientSubtract()
   }
 }
 
+void FormPreconditioner()
+{
+   const double mic_parameter=0.97;
+   double d;
+   unsigned i,j;
+   for (j = 0; j < SIZE; ++j)
+    for (i = 0; i < SIZE; ++i)
+      (*precon)[i][j] = 0;
+   for (j = 0; j < SIZE; ++j)
+     for (i = 0; i < SIZE; ++i)
+       if((*cell_type)[i][j] == FLUID) {
+         d = (*a_diag)[i][j] - sqr((*a_plusi)[i-1][j] * (*precon)[i-1][j])
+                             - sqr((*a_plusj)[i][j-1] * (*precon)[i][j-1])
+                             - mic_parameter * ( (*a_plusi)[i-1][j]*(*a_plusj)[i-1][j]*sqr((*precon)[i-1][j])
+                                               + (*a_plusj)[i][j-1]*(*a_plusi)[i][j-1]*sqr((*precon)[i][j-1]) );
+         (*precon)[i][j]=1/sqrt(d+1e-6);
+      }
+}
+
 void ApplyPreconditioner()
 {
-  int i,j;
-  for (i = 0; i < SIZE; ++i) {
-    for (j = 0; j < SIZE; ++j) {
-      (*aux)[i][j] = (*res)[i][j];
-    }
-  }
+   int i, j;
+   float d;
+   for (j = 0; j < SIZE; ++j)
+    for (i = 0; i < SIZE; ++i)
+      (*m)[i][j] = 0;
+
+   // Solve L*m=x
+   for(j=0; j<SIZE; ++j) 
+     for(i=0; i<SIZE; ++i)
+       if((*cell_type)[i][j] == FLUID){
+         d=(*res)[i][j] - (*a_plusi)[i-1][j] * (*precon)[i-1][j] * (*m)[i-1][j]
+                        - (*a_plusj)[i][j-1] * (*precon)[i][j-1] * (*m)[i][j-1];
+         (*m)[i][j] = (*precon)[i][j] * d;
+       }
+   // Solve L'*y=m
+   for (j = 0; j < SIZE; ++j)
+    for (i = 0; i < SIZE; ++i)
+      (*aux)[i][j] = 0;
+
+   for(j = SIZE-1; j > -1; --j) 
+     for(i = SIZE-1; i > -1; --i)
+       if((*cell_type)[i][j] == FLUID){
+         d = (*m)[i][j] - (*a_plusi)[i][j] * (*precon)[i][j] * (*aux)[i+1][j]
+                        - (*a_plusj)[i][j] * (*precon)[i][j] * (*aux)[i][j+1];
+         (*aux)[i][j] = (*precon)[i][j] * d;
+       }
 }
 
 void Solve()
@@ -276,6 +347,7 @@ void Solve()
       (*a_plusi)[i][j] = 0.0f;
       (*a_plusj)[i][j] = 0.0f;
       (*pressure)[i][j] = 0.0f; //Initial guess
+      (*res)[i][j] = 0.0f;
     }
   }
 
@@ -301,29 +373,35 @@ void Solve()
     }
   }
 
+  FormPreconditioner();
+  //r = b
   for (i = 0; i < SIZE; ++i)
     for (j = 0; j < SIZE; ++j)
-      (*res)[i][j] = (*divergance)[i][j];
-
+      if ((*cell_type)[i][j] == FLUID)
+        (*res)[i][j] = (*divergance)[i][j];
+  
+  //Check r = 0
   float max_res = 0;
   for (i = 0; i < SIZE; ++i)
     for (j = 0; j < SIZE; ++j)
       if (fabs((*res)[i][j]) > max_res)
-        max_res = fabs((*res)[i][j]);
-
+        if ((*cell_type)[i][j] == FLUID)
+          max_res = fabs((*res)[i][j]);
   if (max_res == 0) return;
 
   ApplyPreconditioner();
 
   for (i = 0; i < SIZE; ++i)
     for (j = 0; j < SIZE; ++j)
-      (*search)[i][j] = (*aux)[i][j];
+      if ((*cell_type)[i][j] == FLUID)
+        (*search)[i][j] = (*aux)[i][j];
 
   double sigma = 0;
   double sigma_new = 0;
   for (i = 0; i < SIZE; ++i)
     for (j = 0; j < SIZE; ++j)
-      sigma += (*aux)[i][j] * (*res)[i][j];
+      if ((*cell_type)[i][j] == FLUID)
+        sigma += (*aux)[i][j] * (*res)[i][j];
 
   int iterations = 0;
   while (iterations < 100) {
@@ -340,21 +418,25 @@ void Solve()
     double temp = 0;
     for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
-        temp += (*aux)[i][j] * (*search)[i][j];
+        if ((*cell_type)[i][j] == FLUID)
+          temp += (*aux)[i][j] * (*search)[i][j];
 
     double alpha = sigma/temp;
     for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
-        (*pressure)[i][j] += alpha * (*search)[i][j];
+        if ((*cell_type)[i][j] == FLUID)
+          (*pressure)[i][j] += alpha * (*search)[i][j];
     for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
-        (*res)[i][j] -= alpha * (*aux)[i][j];
+        if ((*cell_type)[i][j] == FLUID)
+          (*res)[i][j] -= alpha * (*aux)[i][j];
 
     float max_res = 0;
     for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
-        if (fabs((*res)[i][j]) > max_res)
-          max_res = fabs((*res)[i][j]);
+        if ((*cell_type)[i][j] == FLUID)
+          if (fabs((*res)[i][j]) > max_res)
+            max_res = fabs((*res)[i][j]);
 
 /*    printf("type\n");
     PrintIntArray(*cell_type);
@@ -377,20 +459,25 @@ void Solve()
     //printf("%f\n", max_res);
     //printf("%i\n", iterations);
 
-    if (max_res < 0.00005) return;
+    if (max_res < 0.000005) {
+      printf("%i iterations %f\n", iterations, max_res);
+      return;
+    }
 
     ApplyPreconditioner();
 
     sigma_new = 0;
     for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
-        sigma_new += (*aux)[i][j] * (*res)[i][j];
+        if ((*cell_type)[i][j] == FLUID)
+          sigma_new += (*aux)[i][j] * (*res)[i][j];
 
     double beta = sigma_new/sigma;
 
     for (i = 0; i < SIZE; ++i)
       for (j = 0; j < SIZE; ++j)
-        (*search)[i][j] = (*aux)[i][j] + beta*(*search)[i][j];
+        if ((*cell_type)[i][j] == FLUID)
+          (*search)[i][j] = (*aux)[i][j] + beta*(*search)[i][j];
 
     sigma = sigma_new;
   }
@@ -419,29 +506,72 @@ void TransferParticlesToGrid()
     for (j = 0; j < SIZE+1; ++j)
       (*v)[i][j] = 0.0f;
 
-  //TODO Particles should effect neighbouring cells and have proper weighting
+
+  int x,y;
+  float cell_x, cell_y, w;
   for (i = 0; i < num_particles; ++i) {
-    unsigned x = (*particles)[i].x;
-    unsigned y = (*particles)[i].y;
-    //Mark the cell containing the box as fluid
-    (*cell_type)[x][y] = FLUID;
-    (*u)[x][y] += (*particles)[i].u;
-    (*v)[x][y] += (*particles)[i].v;
-    (*weight)[x][y] += 1.0f;
+    bary_x((*particles)[i].x, &x, &cell_x);
+    bary_y_centre((*particles)[i].y, &y, &cell_y);
+
+    w=(1-cell_x)*(1-cell_y);
+    (*u)[x][y] += w * (*particles)[i].u;
+    (*weight)[x][y] += w;
+
+    w=cell_x*(1-cell_y);
+    (*u)[x+1][y] += w * (*particles)[i].u;
+    (*weight)[x+1][y] += w;
+
+    w=(1-cell_x)*cell_y;
+    (*u)[x][y+1] += w * (*particles)[i].u;
+    (*weight)[x][y+1] += w;
+
+    w=cell_x*cell_y;
+    (*u)[x+1][y+1] += w * (*particles)[i].u;
+    (*weight)[x+1][y+1] += w;
   }
-  for (i = 0; i < SIZE; ++i) {
-    for (j = 0; j < SIZE; ++j) {
-      if ((*cell_type)[i][j] == FLUID) {
+  for (j = 0; j < SIZE; ++j) 
+    for (i = 0; i < SIZE; ++i) 
+      if ((*weight)[i][j] > 0) {
         (*u)[i][j] /= (*weight)[i][j];
-        (*v)[i][j] /= (*weight)[i][j];
+        (*weight)[i][j] = 0.0f;
       }
-    }
+
+  for (i = 0; i < num_particles; ++i) {
+    bary_x_centre((*particles)[i].x, &x, &cell_x);
+    bary_y((*particles)[i].y, &y, &cell_y);
+
+    w=(1-cell_x)*(1-cell_y);
+    (*v)[x][y] += w * (*particles)[i].v;
+    (*weight)[x][y] += w;
+
+    w=cell_x*(1-cell_y);
+    (*v)[x+1][y] += w * (*particles)[i].v;
+    (*weight)[x+1][y] += w;
+
+    w=(1-cell_x)*cell_y;
+    (*v)[x][y+1] += w * (*particles)[i].v;
+    (*weight)[x][y+1] += w;
+
+    w=cell_x*cell_y;
+    (*v)[x+1][y+1] += w * (*particles)[i].v;
+    (*weight)[x+1][y+1] += w;
   }
-  for (i = 1; i < SIZE-1; ++i) {
+  for (j = 0; j < SIZE; ++j) 
+    for (i = 0; i < SIZE; ++i) 
+      if ((*weight)[i][j] > 0) 
+        (*v)[i][j] /= (*weight)[i][j];
+
+  for (i = 0; i < num_particles; ++i) {
+    bary_x((*particles)[i].x, &x, &cell_x);
+    bary_y((*particles)[i].y, &y, &cell_y);
+    (*cell_type)[x][y] = FLUID;
+  }
+
+  for (i = 0; i < SIZE; ++i) {
     (*cell_type)[0][i] = SOLID;
     (*cell_type)[SIZE-1][i] = SOLID;
   }
-  for (j = 1; j < SIZE-1; ++j) {
+  for (j = 0; j < SIZE; ++j) {
     (*cell_type)[j][0] = SOLID;
     (*cell_type)[j][SIZE-1] = SOLID;
   }
